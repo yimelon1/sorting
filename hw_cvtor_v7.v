@@ -257,6 +257,12 @@ assign debug_addr_sram_sto2 	= addr_sram_sto2 	;
 assign debug_din_sram_sto2 		= din_sram_sto2 	;
 assign debug_dout_sram_sto2 	= dout_sram_sto2 	;
 
+
+assign debug_ch_selector		= ch_selector			;
+assign debug_ch_part 			= ch_part 				;
+assign debug_col_part 			= col_part 				;
+assign debug_col_in_trans 		= col_in_trans 			;
+assign debug_sram_choo 			= sram_choo 			;
 //------------------debug pin-----------------------------
 
 //=============================================================================
