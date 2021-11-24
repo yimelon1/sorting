@@ -40,8 +40,30 @@ module hw_cvtor #(
 	output wire						dout_osif_write, 	// convertor wanna write
 
 
+//------------------debug pin-----------------------------
+	output wire 							debug_en_soz1 ,
+	output wire [  7 : 0]					debug_wea_soz1 ,
+	output wire [  11 : 0] 					debug_addr_sram_soz1 ,
+	output wire [  TRANS_BITS-1 : 0] 		debug_din_sram_soz1 ,
+	output wire [  TRANS_BITS-1 : 0] 		debug_dout_sram_soz1 ,
+
+	output wire 									debug_en_sto1 ,
+	output wire 									debug_wea_sto1 ,
+	output wire [  SRAM_STORING_BITS-1 : 0] 		debug_addr_sram_sto1 ,
+	output wire [  TRANS_BITS-1 : 0] 				debug_din_sram_sto1 ,
+	output wire [  TRANS_BITS-1 : 0] 				debug_dout_sram_sto1 ,
+
+	output wire 									debug_en_sto2 ,
+	output wire 									debug_wea_sto2 ,
+	output wire [  SRAM_STORING_BITS-1 : 0] 		debug_addr_sram_sto2 ,
+	output wire [  TRANS_BITS-1 : 0] 				debug_din_sram_sto2 ,
+	output wire [  TRANS_BITS-1 : 0] 				debug_dout_sram_sto2 ,
+
+
 	output wire 	[10:0 ] 		debug_cnt_output_addr,
 	output 		 [2:0]				current_state
+
+
 );
 
 
@@ -49,24 +71,13 @@ module hw_cvtor #(
 // temp  =====================================================
 //	1 rnd = 32ch --> 32ch 1row size = 256*32 Byte = 256*32/8 entries	=1024 entries
 //	
-//	
 
-reg [18:0] r_addr_soz1 ; // template
 parameter IF_BUFFER_ENTRY_SIZE = 1024 ;
 parameter IF_ENTRY_SIZE = 2048;   // template    256*256*64/8 = 524288  need 19 bits address
 parameter REG_AY_SIZE = 2 ;
 parameter BITS_OF_REG_AY_SIZE = 10;
 parameter OUTPUT_ENTRIES = 1664 ;	// 208*64/8=1664
 parameter SRAM_STORING_BITS = 11 ;	// 256*64/8=2048
-
-
-reg [ TRANS_BITS-1 : 0 ] ifmap_buffer_array [0 : REG_AY_SIZE -1 ]  [ 0 : IF_BUFFER_ENTRY_SIZE-1 ]  ;
-
-
-reg [ TRANS_BITS -1 : 0] temp_yi01 ,temp_yi02 ,temp_yi03 ,temp_yi04 ,temp_yi05 ,temp_yi06  ;
-
-reg [ 9 : 0] st_sort_addr ;
-
 
 
 //============================================================
@@ -218,7 +229,30 @@ assign dout_osif_data = endian_trans_data_out ;
 assign dout_osif_strb    = 'hff;	// have to be 'hff
 assign dout_osif_user    = 'b0;		// no anything for user message
 
+
+//------------------debug pin-----------------------------
 assign debug_cnt_output_addr = cnt_output_addr ;
+
+
+assign debug_en_soz1 			= en_soz1 			;
+assign debug_wea_soz1 			= wea_soz1 			;
+assign debug_addr_sram_soz1 	= addr_sram_soz1 	;
+assign debug_din_sram_soz1 		= din_sram_soz1 	;
+assign debug_dout_sram_soz1 	= dout_sram_soz1 	;
+
+assign debug_en_sto1 			= en_sto1 			;
+assign debug_wea_sto1 			= wea_sto1 			;
+assign debug_addr_sram_sto1 	= addr_sram_sto1	;
+assign debug_din_sram_sto1 		= din_sram_sto1 	;
+assign debug_dout_sram_sto1 	= dout_sram_sto1	;
+
+assign debug_en_sto2 			= en_sto2 			;
+assign debug_wea_sto2 			= wea_sto2 			;
+assign debug_addr_sram_sto2 	= addr_sram_sto2 	;
+assign debug_din_sram_sto2 		= din_sram_sto2 	;
+assign debug_dout_sram_sto2 	= dout_sram_sto2 	;
+
+//------------------debug pin-----------------------------
 
 //=============================================================================
 //====================								===========================
