@@ -59,6 +59,11 @@ module hw_cvtor #(
 	output wire [  TRANS_BITS-1 : 0] 				debug_din_sram_sto2 ,
 	output wire [  TRANS_BITS-1 : 0] 				debug_dout_sram_sto2 ,
 
+	output wire [	9	:	0	]	debug_ch_selector	,	//	(0~3)
+	output wire [	9	:	0	]	debug_ch_part 		,	//	(0~1) current ofmap ch is distribute 2 parts
+	output wire [	9	:	0	] 	debug_col_part 		,
+	output wire [	9	:	0	]	debug_col_in_trans 	,
+	output wire [	9	:	0	]	debug_sram_choo 	,
 
 	output wire 	[10:0 ] 		debug_cnt_output_addr,
 	output 		 [2:0]				current_state
@@ -352,7 +357,6 @@ end
 
 
 
-
 //===   BLOCK RAM declare  ==============================================================
 // write first or read first
 BRAM_SORT SOZ1(
@@ -626,6 +630,9 @@ reg en_col_part ;
 
 
 reg en_sort_addr ;
+
+
+
 
 
 reg [ 9:0 ]dly0_ch_selector ;

@@ -31,10 +31,35 @@ module convert_top #(
         input  wire             aresetn ,
 
 
-		output 	wire			debug_osif_full_n,
-		output	wire				debug_osif_write ,
-		output	wire [TBITS - 1:0] debug_osif_data_din,
-		output wire	[10:0 ]		debug_cnt_output_addr,
+		output 	wire						debug_osif_full_n,
+		output	wire						debug_osif_write ,
+		output	wire [TBITS - 1:0] 			debug_osif_data_din,
+		output wire	[10:0 ]					debug_cnt_output_addr,
+
+		output wire 						debug_en_soz1 ,
+		output wire [  7 : 0]				debug_wea_soz1 ,
+		output wire [  11 : 0] 				debug_addr_sram_soz1 ,
+		output wire [  TBITS-1 : 0] 		debug_din_sram_soz1 ,
+		output wire [  TBITS-1 : 0] 		debug_dout_sram_soz1 ,
+
+		output wire 						debug_en_sto1 ,
+		output wire 						debug_wea_sto1 ,
+		output wire [  TBYTE-1 : 0] 		debug_addr_sram_sto1 ,
+		output wire [  TBITS-1 : 0] 		debug_din_sram_sto1 ,
+		output wire [  TBITS-1 : 0] 		debug_dout_sram_sto1 ,
+
+		output wire 						debug_en_sto2 ,
+		output wire 						debug_wea_sto2 ,
+		output wire [  TBYTE-1 : 0] 		debug_addr_sram_sto2 ,
+		output wire [  TBITS-1 : 0] 		debug_din_sram_sto2 ,
+		output wire [  TBITS-1 : 0] 		debug_dout_sram_sto2 ,
+
+		output wire [	9	:	0	]		debug_ch_selector	,	//	(0~3)
+		output wire [	9	:	0	]		debug_ch_part 		,	//	(0~1) current ofmap ch is distribute 2 parts
+		output wire [	9	:	0	] 		debug_col_part 		,
+		output wire [	9	:	0	]		debug_col_in_trans 	,
+		output wire [	9	:	0	]		debug_sram_choo 	,
+
 		output wire [2:0]		current_state
 
 );
@@ -138,6 +163,31 @@ hw_cvtor_port (
 	.din_osif_full_n ( osif_full_n ) ,
 	.dout_osif_write ( osif_write ) ,
 	//temp
+
+	.debug_en_soz1 			(debug_en_soz1 			),
+	.debug_wea_soz1 		(debug_wea_soz1 		),
+	.debug_addr_sram_soz1 	(debug_addr_sram_soz1 	),
+	.debug_din_sram_soz1 	(debug_din_sram_soz1 	),
+	.debug_dout_sram_soz1 	(debug_dout_sram_soz1 	),
+
+	.debug_en_sto1			(debug_en_sto1 			),
+	.debug_wea_sto1 		(debug_wea_sto1 		),
+	.debug_addr_sram_sto1 	(debug_addr_sram_sto1 	),
+	.debug_din_sram_sto1 	(debug_din_sram_sto1 	),
+	.debug_dout_sram_sto1 	(debug_dout_sram_sto1 	),
+
+	.debug_en_sto2 			(debug_en_sto2 			),
+	.debug_wea_sto2 		(debug_wea_sto2 		),
+	.debug_addr_sram_sto2 	(debug_addr_sram_sto2 	),
+	.debug_din_sram_sto2 	(debug_din_sram_sto2 	),
+	.debug_dout_sram_sto2 	(debug_dout_sram_sto2 	),
+
+	.debug_ch_selector		(debug_ch_selector		),
+	.debug_ch_part 			(debug_ch_part 			),
+	.debug_col_part 		(debug_col_part 		),
+	.debug_col_in_trans 	(debug_col_in_trans 	),
+	.debug_sram_choo 		(debug_sram_choo 		),
+
 	.debug_cnt_output_addr( link_cnt_output_addr),
 	.current_state (current_state )
 );
