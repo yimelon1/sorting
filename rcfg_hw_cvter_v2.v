@@ -17,6 +17,12 @@
 //	2022/01/11: made the 31 to 32 transform success on simulation by "cfg_mode=32'd2"
 //	2022/01/19: think about 3x3 shortcut 
 //		1. choose cfg_mode for 3 (normal size layer) and 4 (layer3x)
+//----------------------------------------------------------------------
+//		1. cfg_mode = 1 transform 3x3 ofmap into channel-major order map	for 1x1 convolution
+//		2. cfg_mode = 2 made the 31 to 32 transform success on simulation 
+//		2. cfg_mode = 3 transform 3x3 ofmap into row-major order map for shortcut and maxpool 
+//						just size 104 and 208. unsorting mode 
+//		3. cfg_mode = 4	for another layer row-major order
 // ============================================================================
 
 
@@ -139,6 +145,12 @@ wire [  TRANS_BITS-1 : 0] dout_sram_sto2 ;
 //
 //---- config control----
 wire cfg_end ;
+wire cvtr_mode1 ;
+wire cvtr_mode2 ;
+wire cvtr_mode3 ;
+wire cvtr_mode4 ;
+
+
 //---- control_signal ----
 wire mach_start ;	//machine start
 
@@ -338,19 +350,19 @@ always@(*)begin
     case(current_state )
     IDLE : begin
         status_reg_fsm = 6'b000001;
-		en_store_data 	= 0; 
-        en_sort_data 	= 0;
-        en_output_data 	= 0;
-		en_reset_cnt 	= 0	;
-		en_cfg			= 0	;	
+		en_store_data <= 0; 
+        en_sort_data <= 0;
+        en_output_data <= 0;
+		en_reset_cnt <= 0	;
+		en_cfg		<= 0	;	
     end
 	CFG_READ : begin
 		status_reg_fsm = 6'b000010;
-		en_store_data 	= 0; 
-        en_sort_data 	= 0;
-        en_output_data 	= 0;
-		en_reset_cnt 	= 0	;
-		en_cfg			= 1	;
+		en_store_data <= 0; 
+        en_sort_data <= 0;
+        en_output_data <= 0;
+		en_reset_cnt <= 0	;
+		en_cfg		<= 1	;
 	end
     STORE : begin
 		status_reg_fsm = 6'b000100;
@@ -453,7 +465,6 @@ assign addr_sram_sto2 = ( en_store_data  & st_cho_sram) ?  store_addr :
 
 assign din_sram_sto1 = endian_trans_data_in ;		
 assign din_sram_sto2 = endian_trans_data_in ;
-
 
 
 assign addr_sram_soz1 = ( en_sort_data )	?  	cnt_soz1_addr 	:
@@ -590,7 +601,10 @@ assign cfg_rowbase_ch_step 		= cfg_data0[ 31 -: 32];
 assign cfg_rowbase_chpart_step 	= cfg_data1[ 63 -: 32];
 assign cfg_ch_part_num			= cfg_data1[ 31 -: 32];
 
-
+assign cvtr_mode1	=	(cfg_mode == 32'd1 )?	1'b1 : 1'b0 ;
+assign cvtr_mode2	=	(cfg_mode == 32'd2 )?	1'b1 : 1'b0 ;
+assign cvtr_mode3	=	(cfg_mode == 32'd3 )?	1'b1 : 1'b0 ;
+assign cvtr_mode4	=	(cfg_mode == 32'd4 )?	1'b1 : 1'b0 ;
 
 //--------- config ending -------
 assign cfg_end = en_cfg && (	cfg_cnt==3'd2 );
@@ -645,9 +659,9 @@ count_yi_v2 #(
 //			doing 3x3 to 1x1 for layer3x , because the smaller input feature map
 //			need change store data size 
 //-----------------------------------------------------------------------------------------
-assign store_addr_last =	( cfg_mode == 32'd2 )?   store_addr == 'd511 : 
+assign store_addr_last =	( cvtr_mode2 )?   store_addr == 'd511 : 
 															store_addr == 'd1023 ;
-assign st_addr_end_num = ( cfg_mode == 32'd2 )? 'd512 : 'd1024 ;
+assign st_addr_end_num = ( cvtr_mode2 )? 'd512 : 'd1024 ;
 
 always@( *) begin
 	if( en_store_data )begin
@@ -734,10 +748,6 @@ wire [ 9:0 ]col_in_trans ;
 wire [ 9:0 ]sram_choo ;
 
 wire [ 10:0 ] cnt_soz1_addr ;
-
-wire en_sortbm_addr ;
-
-
 reg [7:0 ] wea_soz1_choo ;
 // counter enable_signal
 reg	en_ch_selector ;
@@ -747,6 +757,7 @@ reg en_sram_choo ;
 reg en_col_part ;
 
 
+reg en_sort_addr ;
 
 
 
@@ -835,7 +846,7 @@ count_yi_v3 #(
 )cnt_13(
     .clk ( clk ),
     .reset ( cnt_rst ), 
-    .enable ( en_sortbm_addr ), 	//temp
+    .enable ( en_sort_addr ), 	//temp
 	.final_number(	'd2048	),			//temp
     .cnt_q ( cnt_soz1_addr )			// temp
 );
@@ -845,47 +856,95 @@ count_yi_v3 #(
 
 assign multi_ch_selec = ch_selector * cfg_rowbase_ch_step ;		// use config
 assign multi_ch_part = ch_part * cfg_rowbase_chpart_step ;		// use config
-assign sto_addr_temp = multi_ch_selec + multi_ch_part + col_part;
+assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 )?			multi_ch_selec + multi_ch_part + col_part : 
+							(cvtr_mode3 )?					ch_part :
+															10'd0	;
 
 always@( * )begin
-	if ( en_sort_data )begin
-		en_ch_selector 	= 1'd1 ;
 
-		if ( ch_selector == 'd7)  	en_ch_part = 1'd1 ; 		
-							else 	en_ch_part = 1'd0 ;
+	case( cfg_mode[3-:4] )
+		4'd1 , 4'd2 : begin
+			en_ch_selector 	= 	(en_sort_data)?		1'd1	: 1'd0;
+			en_ch_part		=	( en_sort_data & ( ch_selector == 'd7 ) )	?	1'd1	: 1'd0;
+			en_sram_choo	=	( en_sort_data & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 ) )	?	1'd1	: 1'd0;
+			en_col_in_trans	=	( en_sort_data & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 ) & (sram_choo == 'd1 ) )	?	1'd1	: 1'd0;
+			en_col_part		=	( en_sort_data & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 ) & (sram_choo == 'd1 ) & ( col_in_trans == 7))	?	1'd1	: 1'd0;
+		end
+		
+		4'd3: begin
+			en_ch_selector 	= 	1'd0 ;
+			en_ch_part 		= 	(en_sort_data)?		1'd1	: 1'd0; 	 	
+			en_sram_choo 	= 	(en_sort_data & (ch_part == (cfg_ch_part_num >>1 )- 'd1) )?		1'd1	: 1'd0;
+			en_col_in_trans = 	1'd0 ;
+			en_col_part		= 	1'd0 ;
+		end
+		default:  begin 
+			en_ch_selector 	= 1'd0 ;	 
+			en_ch_part 		= 1'd0 ; 	 	
+			en_col_in_trans = 1'd0 ;
+			en_col_part		= 1'd0 ;
+			en_sram_choo 	= 1'd0 ;
 
-		if ( (ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 )) 	en_sram_choo =1'd1 ; 	
-													else 	en_sram_choo =1'd0 ;
+			end
 
-		if ( (ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num -'d1 ) & (sram_choo == 'd1 )) 	en_col_in_trans =1'd1 ; 	
-																		else 	en_col_in_trans =1'd0 ;
+	endcase
 
-		if( (ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num -'d1 ) & (sram_choo == 'd1 ) & ( col_in_trans == 7))	en_col_part = 1'd1;
-																							else	en_col_part = 1'd0;
-
-	end else begin 
-		en_ch_selector 	= 1'd0 ;	 
-		en_ch_part 		= 1'd0 ; 	 	
-		en_col_in_trans = 1'd0 ;
-		en_col_part		= 1'd0 ;
-		en_sram_choo 	= 1'd0 ;
-
-	end
 end
 
+always@(*) begin
+	case( cfg_mode[3-:4] )
+		4'd1: begin
+			en_sort_addr = ( en_sort_data &  ( dly1_ch_selector == 'd7) )	?	1'd1 : 1'd0 ;
 
-assign en_sortbm_addr = (   en_sort_data & cfg_mode == 32'd3 )	?		1'd1	:
-						( en_sort_data & dly1_ch_selector == 'd7)?		1'd1	:
-																		1'd0	;
+		end
+		4'd2 : begin
+			en_sort_addr = ( en_sort_data &  ( dly1_ch_selector == 'd7) )	?	1'd1 : 1'd0 ;
+		end
+		4'd3: begin
+			en_sort_addr = (dly1_en_sort_data  )	?	1'd1 : 1'd0 ;
+		end
+		
+		default: en_sort_addr = 1'd0 ;
+
+	endcase
+
+
+end
+
+//---- soz wea generator ----
+always@( * )begin
+	case( cfg_mode[3 -: 4] )
+		4'd1:begin
+				case( dly1_ch_selector )
+					3'd0: wea_soz1_choo = 	8'b1000_0000		;
+					3'd1: wea_soz1_choo = 	8'b0100_0000		;
+					3'd2: wea_soz1_choo = 	8'b0010_0000		;
+					3'd3: wea_soz1_choo = 	8'b0001_0000		;
+					3'd4: wea_soz1_choo = 	8'b0000_1000		;
+					3'd5: wea_soz1_choo = 	8'b0000_0100		;
+					3'd6: wea_soz1_choo = 	8'b0000_0010		;
+					3'd7: wea_soz1_choo = 	8'b0000_0001		;
+					default : wea_soz1_choo = 8'hff ;
+				endcase
+			end
+		4'd2:begin
+			wea_soz1_choo = 8'hff ;
+		end
+		default : begin
+			wea_soz1_choo = 8'hff ;
+		end
+
+	endcase
+end
 
 //---- dout chooser ----
-assign row1_sort_done = ( cfg_mode == 32'd2 )? ( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) 	:
-							( cfg_mode == 32'd3 )? 									cnt_soz1_addr == 'd2047  	:
-														( (cnt_soz1_addr == 'd2047 ) & ( dly1_ch_selector == 3'd7 ))	;
+assign row1_sort_done = ( cvtr_mode3 )		?	cnt_soz1_addr == 'd2047  :
+							( cvtr_mode2 )	? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) :
+												( (cnt_soz1_addr == 'd2047 ) & ( dly1_ch_selector == 3'd7 ))	;
 
-assign sram_sto_choose = ( dly1_sram_choo == 10'd0)?	 	dout_sram_sto1	:
-							( dly1_sram_choo == 10'd1)?		dout_sram_sto2	:
-													64'hffff_ffff_ffff_ffff	;
+assign sram_sto_choose = (  (dly1_sram_choo == 10'd0) 	)?	 	dout_sram_sto1	:
+							(  (dly1_sram_choo == 10'd1)	)?		dout_sram_sto2	:
+																					64'hffff_ffff_ffff_ffff	;
 
 
 always@( * )begin
@@ -902,34 +961,33 @@ always@( * )begin
 	endcase
 end
 //--- generate 64bits data structure
+
 always@( * )begin
-	case( dly1_ch_selector )
-		3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
-		3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
-		3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
-		3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
-		3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
-		3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
-		3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
-		3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
-		default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+	case( cfg_mode[3 -: 4] )
+		4'd1 , 4'd2:begin
+			case( dly1_ch_selector )
+				3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+				3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+				3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+				3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+				3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
+				3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
+				3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
+				3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
+				default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+			endcase
+			end
+		4'd3:begin
+			re_size_reg = sram_sto_choose ;
+			end
+		default : begin
+			re_size_reg = 64'hffff_ffff_ffff_ffff ;
+		end
+
 	endcase
 end
 
-//---- soz wea generator ----
-always@( * )begin
-	case( dly1_ch_selector )
-		3'd0: wea_soz1_choo = 	8'b1000_0000		;
-		3'd1: wea_soz1_choo = 	8'b0100_0000		;
-		3'd2: wea_soz1_choo = 	8'b0010_0000		;
-		3'd3: wea_soz1_choo = 	8'b0001_0000		;
-		3'd4: wea_soz1_choo = 	8'b0000_1000		;
-		3'd5: wea_soz1_choo = 	8'b0000_0100		;
-		3'd6: wea_soz1_choo = 	8'b0000_0010		;
-		3'd7: wea_soz1_choo = 	8'b0000_0001		;
-		default : wea_soz1_choo = 8'hff ;
-	endcase
-end
+
 
 //---- shifte counter for SRAM_SOZ CHoose data 
 always@( posedge clk or posedge reset )begin
@@ -969,6 +1027,7 @@ always@( posedge clk or posedge reset )begin
 		dly2_col_in_trans <= dly1_col_in_trans	;
 	end
 end
+
 
 
 //=============================================================================
