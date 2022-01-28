@@ -565,6 +565,7 @@ end
 wire en_cfg_cnt ;
 wire [2:0]	cfg_cnt ;
 wire [31:0] cfg_mode ,  cfg_rowbase_ch_step , cfg_rowbase_chpart_step ,cfg_ch_part_num ;
+wire [31:0] cfg_fcol_in_trans , cfg_nothing	;
 reg [TRANS_BITS-1 : 0 ] cfg_data0	;	//for mode choose and rowbase_ch_step	.
 reg [TRANS_BITS-1 : 0 ] cfg_data1	;	//for ROWBASE_CHPART_STEP and CH_PART_NUM.
 reg [TRANS_BITS-1 : 0 ] cfg_data2	;	//none .
@@ -600,6 +601,8 @@ assign cfg_mode 				= cfg_data0[ 63 -: 32];
 assign cfg_rowbase_ch_step 		= cfg_data0[ 31 -: 32];
 assign cfg_rowbase_chpart_step 	= cfg_data1[ 63 -: 32];
 assign cfg_ch_part_num			= cfg_data1[ 31 -: 32];
+assign cfg_fcol_in_trans		= cfg_data2[ 63 -: 32];
+assign cfg_nothing		 		= cfg_data2[ 31 -: 32];
 
 assign cvtr_mode1	=	(cfg_mode == 32'd1 )?	1'b1 : 1'b0 ;
 assign cvtr_mode2	=	(cfg_mode == 32'd2 )?	1'b1 : 1'b0 ;
@@ -791,7 +794,7 @@ count_yi_v3 #(
     .clk ( clk ),
     .reset ( cnt_rst ), 
     .enable ( en_col_in_trans ), 
-	.final_number(	'd8	),		// col only choose to 208 not 256
+	.final_number(	cfg_fcol_in_trans	),		// col only choose to 208 not 256
     .cnt_q ( col_in_trans )
 );
 
@@ -857,7 +860,7 @@ count_yi_v3 #(
 assign multi_ch_selec = ch_selector * cfg_rowbase_ch_step ;		// use config
 assign multi_ch_part = ch_part * cfg_rowbase_chpart_step ;		// use config
 assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 )?			multi_ch_selec + multi_ch_part + col_part : 
-							(cvtr_mode3 )?					ch_part :
+							(cvtr_mode3 )?					multi_ch_part 	+ col_in_trans :
 															10'd0	;
 
 always@( * )begin
@@ -873,9 +876,9 @@ always@( * )begin
 		
 		4'd3: begin
 			en_ch_selector 	= 	1'd0 ;
-			en_ch_part 		= 	(en_sort_data)?		1'd1	: 1'd0; 	 	
-			en_sram_choo 	= 	(en_sort_data & (ch_part == (cfg_ch_part_num >>1 )- 'd1) )?		1'd1	: 1'd0;
-			en_col_in_trans = 	1'd0 ;
+			en_ch_part 		= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ))?		1'd1	: 1'd0; 	 	
+			en_sram_choo 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & (ch_part == cfg_ch_part_num - 'd1) )?		1'd1	: 1'd0;
+			en_col_in_trans = 	(en_sort_data)?		1'd1	: 1'd0; 	
 			en_col_part		= 	1'd0 ;
 		end
 		default:  begin 
@@ -914,7 +917,7 @@ end
 //---- soz wea generator ----
 always@( * )begin
 	case( cfg_mode[3 -: 4] )
-		4'd1:begin
+		4'd1,4'd2:begin
 				case( dly1_ch_selector )
 					3'd0: wea_soz1_choo = 	8'b1000_0000		;
 					3'd1: wea_soz1_choo = 	8'b0100_0000		;
@@ -927,7 +930,7 @@ always@( * )begin
 					default : wea_soz1_choo = 8'hff ;
 				endcase
 			end
-		4'd2:begin
+		4'd3:begin
 			wea_soz1_choo = 8'hff ;
 		end
 		default : begin
