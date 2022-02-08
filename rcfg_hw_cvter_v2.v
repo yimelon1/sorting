@@ -17,12 +17,15 @@
 //	2022/01/11: made the 31 to 32 transform success on simulation by "cfg_mode=32'd2"
 //	2022/01/19: think about 3x3 shortcut 
 //		1. choose cfg_mode for 3 (normal size layer) and 4 (layer3x)
+//	2022/02/08: new mode 4 ,5 ,6 not sim
 //----------------------------------------------------------------------
-//		1. cfg_mode = 1 transform 3x3 ofmap into channel-major order map	for 1x1 convolution
-//		2. cfg_mode = 2 made the 31 to 32 transform success on simulation 
-//		2. cfg_mode = 3 transform 3x3 ofmap into row-major order map for shortcut and maxpool 
-//						just size 104 and 208. unsorting mode 
-//		3. cfg_mode = 4	for another layer row-major order
+//	cfg_mode = 1 transform 3x3 ofmap into channel-major order map	for 1x1 convolution
+//	cfg_mode = 2 made the 31 to 32 transform success on simulation 
+//	cfg_mode = 3 transform 3x3 ofmap into row-major order map for shortcut and maxpool 
+//					just size 104 and 208. unsorting mode 
+//	cfg_mode = 4	for size13 row-major order		---2022/02/08: new mode 4
+//	cfg_mode = 5	for size26 row-major order		---2022/02/08: new mode 5 and 6
+//	cfg_mode = 6	for size52 row-major order		---2022/02/08: new mode 5 and 6
 // ============================================================================
 
 
@@ -854,6 +857,20 @@ count_yi_v3 #(
     .cnt_q ( cnt_soz1_addr )			// temp
 );
 
+//---- soz stage counter ----
+wire [ 4:0 ]	fnum_soz_state_cnt , soz_state_cnt;	// final number of soz state counter
+assign fnum_soz_state_cnt = (cvtr_mode4 ) ? 	5'd26: 5'd0	;
+count_yi_v3 #(
+    .BITS_OF_END_NUMBER( 5  ) 
+)cnt_20(
+    .clk ( clk ),
+    .reset ( cnt_rst ), 
+    .enable ( en_sort_data ), 
+	.final_number(	fnum_soz_state_cnt	),
+    .cnt_q ( soz_state_cnt )			// temp ending
+);
+
+
 
 //---- SORT counter enable control ----
 
@@ -930,10 +947,77 @@ always@( * )begin
 					default : wea_soz1_choo = 8'hff ;
 				endcase
 			end
-		4'd3:begin
-			wea_soz1_choo = 8'hff ;
-		end
-		default : begin
+		4'd4:begin
+				case( soz_state_cnt )	
+					5'd9	,5'd11	: wea_soz1_choo = 	8'b0000_0001		;
+					5'd20	,5'd22	: wea_soz1_choo = 	8'b0000_0011		;
+					5'd2	,5'd4	: wea_soz1_choo = 	8'b0000_0111		;
+					5'd13	,5'd15	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd24	,5'd26	: wea_soz1_choo = 	8'b0001_1111		;
+					5'd8			: wea_soz1_choo =	8'b0011_1110		;
+					5'd6			: wea_soz1_choo =	8'b0011_1111		;
+					5'd19			: wea_soz1_choo = 	8'b0111_1100		;
+					5'd17			: wea_soz1_choo = 	8'b0111_1111		;
+					5'd16	,5'd18	: wea_soz1_choo = 	8'b1000_0000		;
+					5'd23	,5'd25	: wea_soz1_choo = 	8'b1110_0000		;
+					5'd5	,5'd7	: wea_soz1_choo = 	8'b1100_0000		;
+					5'd23	,5'd25	: wea_soz1_choo = 	8'b1110_0000		;
+					5'd12	,5'd14	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd1	,5'd3	: wea_soz1_choo = 	8'b1111_1000		;
+					5'd21			: wea_soz1_choo = 	8'b1111_1100		;
+					5'd10			: wea_soz1_choo = 	8'b1111_1110		;
+					5'd0			: wea_soz1_choo = 	8'b1111_1111		;
+					default : wea_soz1_choo = 8'hff ;
+				endcase
+			end
+		4'd5:begin
+				case( soz_state_cnt )	
+					5'd3	: wea_soz1_choo = 	8'b1100_0000		;
+					5'd4	: wea_soz1_choo =	8'b0011_1111		;
+					5'd5	: wea_soz1_choo =	8'b1100_0000		;
+					5'd6	: wea_soz1_choo = 	8'b0111_1100		;
+					5'd7	: wea_soz1_choo = 	8'b1100_0000		;
+					5'd8	: wea_soz1_choo =	8'b0011_1111		;
+					5'd9	: wea_soz1_choo =	8'b1100_0000		;
+					5'd10	: wea_soz1_choo = 	8'b0011_0000		;
+					5'd11	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd12	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd13	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd14	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd15	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd16	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd17	: wea_soz1_choo = 	8'b0000_1100		;
+					5'd18	: wea_soz1_choo = 	8'b0000_0011		;
+					5'd19	: wea_soz1_choo = 	8'b1111_1100		;
+					5'd20	: wea_soz1_choo = 	8'b0000_0011		;
+					5'd21	: wea_soz1_choo = 	8'b1111_1100		;
+					5'd22	: wea_soz1_choo = 	8'b0000_0011		;
+					5'd23	: wea_soz1_choo = 	8'b1111_1100		;
+					5'd24	: wea_soz1_choo = 	8'b0000_0011		;
+					default : wea_soz1_choo = 8'hff ;		// include 0,1,2
+				endcase
+			end
+		4'd6:begin
+				case( soz_state_cnt )	
+					5'd6	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd7	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd8	: wea_soz1_choo =	8'b1111_0000		;
+					5'd9	: wea_soz1_choo =	8'b0000_1111		;
+					5'd10	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd11	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd12	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd13	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd14	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd15	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd16	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd17	: wea_soz1_choo = 	8'b0000_1111		;
+					5'd18	: wea_soz1_choo = 	8'b1111_0000		;
+					5'd19	: wea_soz1_choo = 	8'b0000_1111		;
+
+					default : wea_soz1_choo = 8'hff ;		// include 0,1,2,3,4,5
+				endcase
+			end
+		default : begin		// include mode 3
 			wea_soz1_choo = 8'hff ;
 		end
 
@@ -983,6 +1067,96 @@ always@( * )begin
 		4'd3:begin
 			re_size_reg = sram_sto_choose ;
 			end
+		4'd4:begin
+			case( soz_state_cnt )	
+				5'd0	: re_size_reg =		sram_sto_choose		;
+				5'd1	: re_size_reg =		{	sram_sto_choose[63 -:40]	,		24'h000						};	//channel end	
+				5'd2	: re_size_reg =		{		40'h0_0000				,	sram_sto_choose[63 -:24]		};
+				5'd3	: re_size_reg =		{	sram_sto_choose[39 -:40]	,		24'h000						};
+				5'd4	: re_size_reg =		{		40'h0_0000				,	sram_sto_choose[63 -:24]		};
+				5'd5	: re_size_reg =		{	sram_sto_choose[39 -:16]	,		48'h00_0000					};	//channel end	
+				5'd6	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:48]		};
+				5'd7	: re_size_reg =		{	sram_sto_choose[15 -:16]	,		48'h00_0000					};
+				5'd8	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:48]	, 8'd0 };	//channel end	
+				5'd9	: re_size_reg =		{ 		56'h000_0000			,	sram_sto_choose[63 -:8]			};	
+				5'd10	: re_size_reg =		{ 	sram_sto_choose[55 -:56]	,	8'd0 							};	
+				5'd11	: re_size_reg =		{		56'h000_0000			,	sram_sto_choose[63 -:8]			};	
+				5'd12	: re_size_reg =		{	sram_sto_choose[55 -:32]	,		32'h0000					};	//channel end	
+				5'd13	: re_size_reg =		{ 		32'h0000				,	sram_sto_choose[63 -:32]		};
+				5'd14	: re_size_reg =		{ 	sram_sto_choose[31 -:32]	,		32'h0000					};
+				5'd15	: re_size_reg =		{		32'h0000				,	sram_sto_choose[63 -:32]		};
+				5'd16	: re_size_reg =		{	sram_sto_choose[31 -:8]		,		56'h000_0000				};	//channel end	
+				5'd17	: re_size_reg =		{	8'd0						,	sram_sto_choose[63 -:56]		};
+				5'd18	: re_size_reg =		{	sram_sto_choose[7 -:8]		,		56'h000_0000				};
+				5'd19	: re_size_reg =		{	8'd0						,	sram_sto_choose[63 -:40]	,16'h00 };	//channel end	
+				5'd20	: re_size_reg =		{		48'h00_0000				,	sram_sto_choose[63 -:16]		};
+				5'd21	: re_size_reg =		{	sram_sto_choose[47 -:48]	,	16'h00							};
+				5'd22	: re_size_reg =		{		48'h00_0000				,	sram_sto_choose[63 -:16]		};
+				5'd23	: re_size_reg =		{	sram_sto_choose[47 -:24]	,		40'h0_0000					};	//channel end	
+				5'd24	: re_size_reg =		{		24'h000					,	sram_sto_choose[63 -:40]	 	};
+				5'd25	: re_size_reg =		{ 	sram_sto_choose[23 -:24]	,		40'h0_0000					};
+				5'd26	: re_size_reg =		{		24'h000					,	sram_sto_choose[63 -:40]	 	};	//channel end	
+				
+				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
+			endcase
+		end	
+		4'd5:begin
+			case( soz_state_cnt )	
+				5'd0	: re_size_reg =		sram_sto_choose		;
+				5'd1	: re_size_reg =		sram_sto_choose		;
+				5'd2	: re_size_reg =		sram_sto_choose		;
+				5'd3	: re_size_reg =		{			sram_sto_choose[63 -:16]	,	48'd0	};
+				5'd4	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
+				5'd5	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};
+				5'd6	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
+				5'd7	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};
+				5'd8	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
+				5'd9	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};	
+				5'd10	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:16]	,	32'd0	};	//chend
+				5'd11	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
+				5'd12	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
+				5'd13	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
+				5'd14	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
+				5'd15	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
+				5'd16	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
+				5'd17	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:16]	,	16'd0	};
+				5'd18	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
+				5'd19	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
+				5'd20	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
+				5'd21	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
+				5'd22	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
+				5'd23	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
+				5'd24	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
+				
+				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
+			endcase
+		end	
+		4'd6:begin
+			case( soz_state_cnt )	
+				5'd0	: re_size_reg =		sram_sto_choose		;
+				5'd1	: re_size_reg =		sram_sto_choose		;
+				5'd2	: re_size_reg =		sram_sto_choose		;
+				5'd3	: re_size_reg =		sram_sto_choose		;
+				5'd4	: re_size_reg =		sram_sto_choose		;
+				5'd5	: re_size_reg =		sram_sto_choose		;
+				5'd6	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd7	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		 		};
+				5'd8	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd9	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		 		};
+				5'd10	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd11	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				5'd12	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd13	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				5'd14	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd15	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				5'd16	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd17	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				5'd18	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd19	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+
+				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
+			endcase
+		end
 		default : begin
 			re_size_reg = 64'hffff_ffff_ffff_ffff ;
 		end
