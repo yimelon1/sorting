@@ -17,7 +17,7 @@
 //	2022/01/11: made the 31 to 32 transform success on simulation by "cfg_mode=32'd2"
 //	2022/01/19: think about 3x3 shortcut 
 //		1. choose cfg_mode for 3 (normal size layer) and 4 (layer3x)
-//	2022/02/08: new mode 4 ,5 ,6 not sim
+//	2022/02/09: new mode 4 ,5 ,6 sim ok
 //----------------------------------------------------------------------
 //	cfg_mode = 1 transform 3x3 ofmap into channel-major order map	for 1x1 convolution
 //	cfg_mode = 2 made the 31 to 32 transform success on simulation 
@@ -152,6 +152,9 @@ wire cvtr_mode1 ;
 wire cvtr_mode2 ;
 wire cvtr_mode3 ;
 wire cvtr_mode4 ;
+wire cvtr_mode5 ;
+wire cvtr_mode6 ;
+wire cvtr_mode7 ;
 
 
 //---- control_signal ----
@@ -611,6 +614,9 @@ assign cvtr_mode1	=	(cfg_mode == 32'd1 )?	1'b1 : 1'b0 ;
 assign cvtr_mode2	=	(cfg_mode == 32'd2 )?	1'b1 : 1'b0 ;
 assign cvtr_mode3	=	(cfg_mode == 32'd3 )?	1'b1 : 1'b0 ;
 assign cvtr_mode4	=	(cfg_mode == 32'd4 )?	1'b1 : 1'b0 ;
+assign cvtr_mode5	=	(cfg_mode == 32'd5 )?	1'b1 : 1'b0 ;
+assign cvtr_mode6	=	(cfg_mode == 32'd6 )?	1'b1 : 1'b0 ;
+assign cvtr_mode7	=	(cfg_mode == 32'd7 )?	1'b1 : 1'b0 ;
 
 //--------- config ending -------
 assign cfg_end = en_cfg && (	cfg_cnt==3'd2 );
@@ -665,9 +671,9 @@ count_yi_v2 #(
 //			doing 3x3 to 1x1 for layer3x , because the smaller input feature map
 //			need change store data size 
 //-----------------------------------------------------------------------------------------
-assign store_addr_last =	( cvtr_mode2 )?   store_addr == 'd511 : 
+assign store_addr_last =	( cvtr_mode2 | cvtr_mode4 )?   store_addr == 'd511 : 
 															store_addr == 'd1023 ;
-assign st_addr_end_num = ( cvtr_mode2 )? 'd512 : 'd1024 ;
+assign st_addr_end_num = ( cvtr_mode2 | cvtr_mode4 )? 'd512 : 'd1024 ;
 
 always@( *) begin
 	if( en_store_data )begin
@@ -739,7 +745,7 @@ wire [ 14:0 ] temp01 ;
 wire [ 9:0] temp02;
 wire [ 9:0] temp03;
 wire [ 9:0] temp04;
-wire [	9	:	0	]	ch_selector	;	//	(0~3)
+wire [	4	:	0	]	ch_selector	;	//	(0~3)
 wire [	9	:	0	]	ch_part ;		//	(0~1) current ofmap ch is distribute 2 parts
 wire [	9	:	0	] 	col_part 	;
 wire [ 18:0 ] multi_row ;
@@ -767,9 +773,9 @@ reg en_sort_addr ;
 
 
 
-reg [ 9:0 ]dly0_ch_selector ;
-reg [ 9:0 ]dly1_ch_selector ;
-reg [ 9:0 ]dly2_ch_selector ;
+reg [ 4:0 ]dly0_ch_selector ;
+reg [ 4:0 ]dly1_ch_selector ;
+reg [ 4:0 ]dly2_ch_selector ;
 
 reg [9:0] dly0_sram_choo ;
 reg [9:0] dly1_sram_choo ;
@@ -801,15 +807,20 @@ count_yi_v3 #(
     .cnt_q ( col_in_trans )
 );
 
+wire [4:0]fnum_ch_selector;
+assign fnum_ch_selector = (cvtr_mode6 ) ? 5'd2 : 5'd8;
+
+
 count_yi_v3 #(
-    .BITS_OF_END_NUMBER( 10  ) 
+    .BITS_OF_END_NUMBER( 5  ) 
 )cnt_11(
     .clk ( clk ),
     .reset ( cnt_rst ), 
     .enable ( en_ch_selector ), 	//temp
-	.final_number(	'd8	),			//temp
+	.final_number(	fnum_ch_selector	),			//temp
     .cnt_q ( ch_selector )			// ch 0~7 choose
 );
+
 
 
 count_yi_v3 #(
@@ -859,7 +870,10 @@ count_yi_v3 #(
 
 //---- soz stage counter ----
 wire [ 4:0 ]	fnum_soz_state_cnt , soz_state_cnt;	// final number of soz state counter
-assign fnum_soz_state_cnt = (cvtr_mode4 ) ? 	5'd26: 5'd0	;
+assign fnum_soz_state_cnt = (cvtr_mode4 ) ? 	5'd27: 
+								(cvtr_mode5 ) ? 	5'd25: 
+									(cvtr_mode6 ) ? 	5'd20: 
+								5'd0	;
 count_yi_v3 #(
     .BITS_OF_END_NUMBER( 5  ) 
 )cnt_20(
@@ -870,6 +884,18 @@ count_yi_v3 #(
     .cnt_q ( soz_state_cnt )			// temp ending
 );
 
+//---- delay soz state count ----
+reg [ 4:0 ] dly0_soz_state_cnt , dly1_soz_state_cnt;
+always@(posedge clk) begin
+	if( reset )begin
+		dly0_soz_state_cnt <= 5'd0;
+		dly1_soz_state_cnt <= 5'd0;
+	end 
+	else begin
+		dly0_soz_state_cnt <= soz_state_cnt;
+		dly1_soz_state_cnt <= dly0_soz_state_cnt;
+	end
+end
 
 
 //---- SORT counter enable control ----
@@ -878,6 +904,8 @@ assign multi_ch_selec = ch_selector * cfg_rowbase_ch_step ;		// use config
 assign multi_ch_part = ch_part * cfg_rowbase_chpart_step ;		// use config
 assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 )?			multi_ch_selec + multi_ch_part + col_part : 
 							(cvtr_mode3 )?					multi_ch_part 	+ col_in_trans :
+							(cvtr_mode4 | cvtr_mode5  )?			multi_ch_part 	+ col_in_trans :
+							( cvtr_mode6 )?					multi_ch_part 	+ col_in_trans + multi_ch_selec:
 															10'd0	;
 
 always@( * )begin
@@ -898,6 +926,130 @@ always@( * )begin
 			en_col_in_trans = 	(en_sort_data)?		1'd1	: 1'd0; 	
 			en_col_part		= 	1'd0 ;
 		end
+
+		4'd4:begin			// row major size 13 , soz_state_cnt 0~26
+			en_ch_selector 	= 	1'd0 ;
+			en_col_part		= 	1'd0 ;
+			en_ch_part 		= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ))?		1'd1	: 1'd0; 	 	
+			en_sram_choo 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & (ch_part == cfg_ch_part_num - 'd1) )?		1'd1	: 1'd0;
+			if( en_sort_data )begin
+				case( soz_state_cnt )	// check enable setting on excel
+					5'd0	: en_col_in_trans =	1'd1	;
+					5'd1	: en_col_in_trans =	1'd1	;		
+					5'd2	: en_col_in_trans =	1'd0	;	
+					5'd3	: en_col_in_trans =	1'd1	;
+					5'd4	: en_col_in_trans =	1'd0	;
+					5'd5	: en_col_in_trans =	1'd1	;		
+					5'd6	: en_col_in_trans =	1'd0	;
+					5'd7	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits
+					5'd8	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits	//channel end	
+					5'd9	: en_col_in_trans =	1'd0	;	
+					5'd10	: en_col_in_trans =	1'd1	;	
+					5'd11	: en_col_in_trans =	1'd0	;	
+					5'd12	: en_col_in_trans =	1'd1	;	
+					5'd13	: en_col_in_trans =	1'd0	;
+					5'd14	: en_col_in_trans =	1'd1	;
+					5'd15	: en_col_in_trans =	1'd0	;
+					5'd16	: en_col_in_trans =	1'd1	;		
+					5'd17	: en_col_in_trans =	1'd0	;
+					5'd18	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits
+					5'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
+					5'd20	: en_col_in_trans =	1'd0	;
+					5'd21	: en_col_in_trans =	1'd1	;
+					5'd22	: en_col_in_trans =	1'd0	;
+					5'd23	: en_col_in_trans =	1'd1	;		
+					5'd24	: en_col_in_trans =	1'd0	;
+					5'd25	: en_col_in_trans =	1'd1	;
+					5'd26	: en_col_in_trans =	1'd1	;		
+					
+					default : en_col_in_trans =	 1'd0 ;		
+				endcase
+			end 
+			else begin
+					en_col_in_trans = 1'd0 ;
+			end
+
+		end
+
+		4'd5:begin		// size 26 , soz_state_cnt 0~24
+			en_ch_selector 	= 	1'd0 ;
+			en_col_part		= 	1'd0 ;
+			en_ch_part 		= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) )?		1'd1	: 1'd0; 	 	
+			en_sram_choo 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & (ch_part == cfg_ch_part_num - 'd1) )?		1'd1	: 1'd0;
+			if( en_sort_data )begin
+				case( soz_state_cnt )	
+					5'd0	: en_col_in_trans =	1'd1	;
+					5'd1	: en_col_in_trans =	1'd1	;		
+					5'd2	: en_col_in_trans =	1'd1	;	
+					5'd3	: en_col_in_trans =	1'd1	;
+					5'd4	: en_col_in_trans =	1'd0	;
+					5'd5	: en_col_in_trans =	1'd1	;		
+					5'd6	: en_col_in_trans =	1'd0	;
+					5'd7	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits
+					5'd8	: en_col_in_trans =	1'd0	;		// data has not filled in 64 bits	//channel end	
+					5'd9	: en_col_in_trans =	1'd1	;	
+					5'd10	: en_col_in_trans =	1'd1	;	
+					5'd11	: en_col_in_trans =	1'd0	;	
+					5'd12	: en_col_in_trans =	1'd1	;	
+					5'd13	: en_col_in_trans =	1'd0	;
+					5'd14	: en_col_in_trans =	1'd1	;
+					5'd15	: en_col_in_trans =	1'd0	;
+					5'd16	: en_col_in_trans =	1'd1	;		
+					5'd17	: en_col_in_trans =	1'd1	;
+					5'd18	: en_col_in_trans =	1'd0	;	// data has not filled in 64 bits
+					5'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
+					5'd20	: en_col_in_trans =	1'd0	;
+					5'd21	: en_col_in_trans =	1'd1	;
+					5'd22	: en_col_in_trans =	1'd0	;
+					5'd23	: en_col_in_trans =	1'd1	;		
+					5'd24	: en_col_in_trans =	1'd1	;
+			
+					default : en_col_in_trans =	 1'd0 ;		
+				endcase
+			end 
+			else begin
+					en_col_in_trans = 1'd0 ;
+			end
+
+		end
+
+		4'd6:begin		// for size 52 , soz_state_cnt 0~19
+			en_ch_selector 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ))?		1'd1	: 1'd0; 
+			en_col_part		= 	1'd0 ;
+			en_ch_part 		= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & ( ch_selector == 5'd1 ))?		1'd1	: 1'd0; 	 	
+			en_sram_choo 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & (ch_part == cfg_ch_part_num - 'd1) & ( ch_selector == 5'd1 ))?		1'd1	: 1'd0;
+			if( en_sort_data )begin
+				case( soz_state_cnt )	
+					5'd0	: en_col_in_trans =	1'd1	;
+					5'd1	: en_col_in_trans =	1'd1	;		
+					5'd2	: en_col_in_trans =	1'd1	;	
+					5'd3	: en_col_in_trans =	1'd1	;
+					5'd4	: en_col_in_trans =	1'd1	;
+					5'd5	: en_col_in_trans =	1'd1	;		
+					5'd6	: en_col_in_trans =	1'd1	;
+					5'd7	: en_col_in_trans =	1'd0	;		// data has not filled in 64 bits
+					5'd8	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits	//channel end	
+					5'd9	: en_col_in_trans =	1'd0	;	
+					5'd10	: en_col_in_trans =	1'd1	;	
+					5'd11	: en_col_in_trans =	1'd0	;	
+					5'd12	: en_col_in_trans =	1'd1	;	
+					5'd13	: en_col_in_trans =	1'd0	;
+					5'd14	: en_col_in_trans =	1'd1	;
+					5'd15	: en_col_in_trans =	1'd0	;
+					5'd16	: en_col_in_trans =	1'd1	;		
+					5'd17	: en_col_in_trans =	1'd0	;
+					5'd18	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits
+					5'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
+					
+					default : en_col_in_trans =	 1'd0 ;		
+				endcase
+			end 
+			else begin
+					en_col_in_trans = 1'd0 ;
+			end
+
+		end
+
 		default:  begin 
 			en_ch_selector 	= 1'd0 ;	 
 			en_ch_part 		= 1'd0 ; 	 	
@@ -911,6 +1063,7 @@ always@( * )begin
 
 end
 
+//---- soz address number counter enable ----
 always@(*) begin
 	case( cfg_mode[3-:4] )
 		4'd1: begin
@@ -923,7 +1076,117 @@ always@(*) begin
 		4'd3: begin
 			en_sort_addr = (dly1_en_sort_data  )	?	1'd1 : 1'd0 ;
 		end
-		
+		4'd4:begin
+			if( dly1_en_sort_data )begin
+				case( dly1_soz_state_cnt )	
+					5'd0	: en_sort_addr =	1'd1	;
+					5'd1	: en_sort_addr =	1'd0	;		
+					5'd2	: en_sort_addr =	1'd1	;	
+					5'd3	: en_sort_addr =	1'd0	;
+					5'd4	: en_sort_addr =	1'd1	;
+					5'd5	: en_sort_addr =	1'd0	;		
+					5'd6	: en_sort_addr =	1'd1	;
+					5'd7	: en_sort_addr =	1'd0	;		// data has not filled in 64 bits
+					5'd8	: en_sort_addr =	1'd0	;		// data has not filled in 64 bits	//channel end	
+					5'd9	: en_sort_addr =	1'd1	;	
+					5'd10	: en_sort_addr =	1'd0	;	
+					5'd11	: en_sort_addr =	1'd1	;	
+					5'd12	: en_sort_addr =	1'd0	;	
+					5'd13	: en_sort_addr =	1'd1	;
+					5'd14	: en_sort_addr =	1'd0	;
+					5'd15	: en_sort_addr =	1'd1	;
+					5'd16	: en_sort_addr =	1'd0	;		
+					5'd17	: en_sort_addr =	1'd1	;
+					5'd18	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
+					5'd19	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	
+					5'd20	: en_sort_addr =	1'd1	;
+					5'd21	: en_sort_addr =	1'd0	;
+					5'd22	: en_sort_addr =	1'd1	;
+					5'd23	: en_sort_addr =	1'd0	;		
+					5'd24	: en_sort_addr =	1'd1	;
+					5'd25	: en_sort_addr =	1'd0	;
+					5'd26	: en_sort_addr =	1'd1	;		
+					
+					default : en_sort_addr =	 1'd0 ;		
+				endcase
+			end 
+			else begin
+					en_sort_addr = 1'd0 ;
+			end
+			
+
+		end
+
+		4'd5:begin		//size26
+			if( dly1_en_sort_data )begin
+				case( dly1_soz_state_cnt )	
+					5'd0	: en_sort_addr =	1'd1	;
+					5'd1	: en_sort_addr =	1'd1	;		
+					5'd2	: en_sort_addr =	1'd1	;	
+					5'd3	: en_sort_addr =	1'd0	;
+					5'd4	: en_sort_addr =	1'd1	;
+					5'd5	: en_sort_addr =	1'd0	;		
+					5'd6	: en_sort_addr =	1'd1	;
+					5'd7	: en_sort_addr =	1'd0	;		
+					5'd8	: en_sort_addr =	1'd1	;		
+					5'd9	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
+					5'd10	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	//channel end	
+					5'd11	: en_sort_addr =	1'd1	;	
+					5'd12	: en_sort_addr =	1'd0	;	
+					5'd13	: en_sort_addr =	1'd1	;
+					5'd14	: en_sort_addr =	1'd0	;
+					5'd15	: en_sort_addr =	1'd1	;
+					5'd16	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	
+					5'd17	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
+					5'd18	: en_sort_addr =	1'd1	;	
+					5'd19	: en_sort_addr =	1'd0	;		
+					5'd20	: en_sort_addr =	1'd1	;
+					5'd21	: en_sort_addr =	1'd0	;
+					5'd22	: en_sort_addr =	1'd1	;
+					5'd23	: en_sort_addr =	1'd0	;		
+					5'd24	: en_sort_addr =	1'd1	;	
+					default : en_sort_addr =	 1'd0 ;		
+				endcase
+			end 
+			else begin
+					en_sort_addr = 1'd0 ;
+			end
+			
+
+		end
+
+		4'd6:begin			// size52
+			if( dly1_en_sort_data )begin
+				case( dly1_soz_state_cnt )	
+					5'd0	: en_sort_addr =	1'd1	;
+					5'd1	: en_sort_addr =	1'd1	;		
+					5'd2	: en_sort_addr =	1'd1	;	
+					5'd3	: en_sort_addr =	1'd1	;
+					5'd4	: en_sort_addr =	1'd1	;
+					5'd5	: en_sort_addr =	1'd1	;		
+					5'd6	: en_sort_addr =	1'd0	;
+					5'd7	: en_sort_addr =	1'd1	;	
+					5'd8	: en_sort_addr =	1'd0	;	
+					5'd9	: en_sort_addr =	1'd1	;	
+					5'd10	: en_sort_addr =	1'd0	;	
+					5'd11	: en_sort_addr =	1'd1	;	
+					5'd12	: en_sort_addr =	1'd0	;	
+					5'd13	: en_sort_addr =	1'd1	;
+					5'd14	: en_sort_addr =	1'd0	;
+					5'd15	: en_sort_addr =	1'd1	;
+					5'd16	: en_sort_addr =	1'd0	;		
+					5'd17	: en_sort_addr =	1'd1	;
+					5'd18	: en_sort_addr =	1'd0	;	
+					5'd19	: en_sort_addr =	1'd1	;		
+					default : en_sort_addr =	 1'd0 ;		
+				endcase
+			end 
+			else begin
+					en_sort_addr = 1'd0 ;
+			end
+			
+
+		end
 		default: en_sort_addr = 1'd0 ;
 
 	endcase
@@ -948,7 +1211,7 @@ always@( * )begin
 				endcase
 			end
 		4'd4:begin
-				case( soz_state_cnt )	
+				case( dly1_soz_state_cnt )	
 					5'd9	,5'd11	: wea_soz1_choo = 	8'b0000_0001		;
 					5'd20	,5'd22	: wea_soz1_choo = 	8'b0000_0011		;
 					5'd2	,5'd4	: wea_soz1_choo = 	8'b0000_0111		;
@@ -971,11 +1234,11 @@ always@( * )begin
 				endcase
 			end
 		4'd5:begin
-				case( soz_state_cnt )	
+				case( dly1_soz_state_cnt )	
 					5'd3	: wea_soz1_choo = 	8'b1100_0000		;
 					5'd4	: wea_soz1_choo =	8'b0011_1111		;
 					5'd5	: wea_soz1_choo =	8'b1100_0000		;
-					5'd6	: wea_soz1_choo = 	8'b0111_1100		;
+					5'd6	: wea_soz1_choo = 	8'b0011_1111		;
 					5'd7	: wea_soz1_choo = 	8'b1100_0000		;
 					5'd8	: wea_soz1_choo =	8'b0011_1111		;
 					5'd9	: wea_soz1_choo =	8'b1100_0000		;
@@ -998,7 +1261,7 @@ always@( * )begin
 				endcase
 			end
 		4'd6:begin
-				case( soz_state_cnt )	
+				case( dly1_soz_state_cnt )	
 					5'd6	: wea_soz1_choo = 	8'b1111_0000		;
 					5'd7	: wea_soz1_choo = 	8'b0000_1111		;
 					5'd8	: wea_soz1_choo =	8'b1111_0000		;
@@ -1025,9 +1288,10 @@ always@( * )begin
 end
 
 //---- dout chooser ----
-assign row1_sort_done = ( cvtr_mode3 )		?	cnt_soz1_addr == 'd2047  :
-							( cvtr_mode2 )	? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) :
-												( (cnt_soz1_addr == 'd2047 ) & ( dly1_ch_selector == 3'd7 ))	;
+assign row1_sort_done = ( cvtr_mode3 | cvtr_mode5 | cvtr_mode6 )			?	cnt_soz1_addr == 'd2047  :
+							( cvtr_mode4 )									? 	(cnt_soz1_addr == 'd1023 ) :
+								( cvtr_mode2 )								? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) :
+																		( (cnt_soz1_addr == 'd2047 ) & ( dly1_ch_selector == 3'd7 ))	;
 
 assign sram_sto_choose = (  (dly1_sram_choo == 10'd0) 	)?	 	dout_sram_sto1	:
 							(  (dly1_sram_choo == 10'd1)	)?		dout_sram_sto2	:
@@ -1068,7 +1332,7 @@ always@( * )begin
 			re_size_reg = sram_sto_choose ;
 			end
 		4'd4:begin
-			case( soz_state_cnt )	
+			case( dly1_soz_state_cnt )	
 				5'd0	: re_size_reg =		sram_sto_choose		;
 				5'd1	: re_size_reg =		{	sram_sto_choose[63 -:40]	,		24'h000						};	//channel end	
 				5'd2	: re_size_reg =		{		40'h0_0000				,	sram_sto_choose[63 -:24]		};
@@ -1077,7 +1341,7 @@ always@( * )begin
 				5'd5	: re_size_reg =		{	sram_sto_choose[39 -:16]	,		48'h00_0000					};	//channel end	
 				5'd6	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:48]		};
 				5'd7	: re_size_reg =		{	sram_sto_choose[15 -:16]	,		48'h00_0000					};
-				5'd8	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:48]	, 8'd0 };	//channel end	
+				5'd8	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:40]	, 8'd0 };	//channel end	
 				5'd9	: re_size_reg =		{ 		56'h000_0000			,	sram_sto_choose[63 -:8]			};	
 				5'd10	: re_size_reg =		{ 	sram_sto_choose[55 -:56]	,	8'd0 							};	
 				5'd11	: re_size_reg =		{		56'h000_0000			,	sram_sto_choose[63 -:8]			};	
@@ -1101,7 +1365,7 @@ always@( * )begin
 			endcase
 		end	
 		4'd5:begin
-			case( soz_state_cnt )	
+			case( dly1_soz_state_cnt )	
 				5'd0	: re_size_reg =		sram_sto_choose		;
 				5'd1	: re_size_reg =		sram_sto_choose		;
 				5'd2	: re_size_reg =		sram_sto_choose		;
@@ -1132,7 +1396,7 @@ always@( * )begin
 			endcase
 		end	
 		4'd6:begin
-			case( soz_state_cnt )	
+			case( dly1_soz_state_cnt )	
 				5'd0	: re_size_reg =		sram_sto_choose		;
 				5'd1	: re_size_reg =		sram_sto_choose		;
 				5'd2	: re_size_reg =		sram_sto_choose		;
@@ -1141,17 +1405,17 @@ always@( * )begin
 				5'd5	: re_size_reg =		sram_sto_choose		;
 				5'd6	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
 				5'd7	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		 		};
-				5'd8	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd8	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
 				5'd9	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		 		};
-				5'd10	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd10	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
 				5'd11	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
-				5'd12	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd12	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
 				5'd13	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
-				5'd14	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd14	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
 				5'd15	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
-				5'd16	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd16	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
 				5'd17	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
-				5'd18	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				5'd18	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
 				5'd19	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
 
 				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
@@ -1217,7 +1481,7 @@ assign output_data = ( en_output_write ) ? dout_sram_soz1 : 'd0 ;
 assign row1_output_done = dly1_cnt_output_last ;
 assign dout_osif_last = dly1_cnt_output_last ;		// 10/14 need to wait for BRAM's reading data process about 2 clk
 assign dout_osif_write = en_output_write &  en_output_data;
-assign out_addr_num = (cfg_mode == 32'd2 )?	11'd831 : 11'd1663 ;
+assign out_addr_num = (cvtr_mode2 | cvtr_mode4 )?	11'd831 : 11'd1663 ;
 //--------------------------------
 //always block : row1 data output
 //--------------------------------
