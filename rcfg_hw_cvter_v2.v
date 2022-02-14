@@ -31,7 +31,7 @@
 
 module hw_cvtor #(
     parameter TRANS_BYTE_SIZE = 8 ,
-    parameter TRANS_BITS = 64
+    parameter TRANS_BITS = 64 
 )(
     
 	input wire	clk,
@@ -219,6 +219,7 @@ reg dly0_en_sort_data , dly1_en_sort_data ;
 reg dly0_en_output_data ,dly1_en_output_data ;
 reg dly0_reset_store_cnt , dly1_reset_store_cnt , dly2_reset_store_cnt ;	//hope not use
 reg dly0_cnt_output_last , dly1_cnt_output_last	;		
+reg [ 4:0 ] dly0_soz_state_cnt , dly1_soz_state_cnt;
 
 //---- ending_signal ----
 reg full_data_output_done ;
@@ -884,32 +885,17 @@ count_yi_v3 #(
     .cnt_q ( soz_state_cnt )			// temp ending
 );
 
-//---- delay soz state count ----
-reg [ 4:0 ] dly0_soz_state_cnt , dly1_soz_state_cnt;
-always@(posedge clk) begin
-	if( reset )begin
-		dly0_soz_state_cnt <= 5'd0;
-		dly1_soz_state_cnt <= 5'd0;
-	end 
-	else begin
-		dly0_soz_state_cnt <= soz_state_cnt;
-		dly1_soz_state_cnt <= dly0_soz_state_cnt;
-	end
-end
 
-
-//---- SORT counter enable control ----
-
-assign multi_ch_selec = ch_selector * cfg_rowbase_ch_step ;		// use config
-assign multi_ch_part = ch_part * cfg_rowbase_chpart_step ;		// use config
+// ---- SORT_state : sto address generator----
+assign multi_ch_selec 	= ch_selector * cfg_rowbase_ch_step ;		// use config
+assign multi_ch_part 	= ch_part * cfg_rowbase_chpart_step ;		// use config
 assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 )?			multi_ch_selec + multi_ch_part + col_part : 
 							(cvtr_mode3 )?					multi_ch_part 	+ col_in_trans :
 							(cvtr_mode4 | cvtr_mode5  )?			multi_ch_part 	+ col_in_trans :
 							( cvtr_mode6 )?					multi_ch_part 	+ col_in_trans + multi_ch_selec:
 															10'd0	;
-
+//---- SORT counter enable control ----
 always@( * )begin
-
 	case( cfg_mode[3-:4] )
 		4'd1 , 4'd2 : begin
 			en_ch_selector 	= 	(en_sort_data)?		1'd1	: 1'd0;
@@ -1287,7 +1273,13 @@ always@( * )begin
 	endcase
 end
 
-//---- dout chooser ----
+
+//----------------------------------------------------------------------- 
+//---- sto dout chooser ----
+//	description : state done signal generate
+//				and choose which sram data is needed. 
+//				data position should be changed by following logic.
+//----------------------------------------------------------------------- 
 assign row1_sort_done = ( cvtr_mode3 | cvtr_mode5 | cvtr_mode6 )			?	cnt_soz1_addr == 'd2047  :
 							( cvtr_mode4 )									? 	(cnt_soz1_addr == 'd1023 ) :
 								( cvtr_mode2 )								? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) :
@@ -1469,6 +1461,17 @@ always@( posedge clk or posedge reset )begin
 	end
 end
 
+//---- delay soz state count ----
+always@(posedge clk) begin
+	if( reset )begin
+		dly0_soz_state_cnt <= 5'd0;
+		dly1_soz_state_cnt <= 5'd0;
+	end 
+	else begin
+		dly0_soz_state_cnt <= soz_state_cnt;
+		dly1_soz_state_cnt <= dly0_soz_state_cnt;
+	end
+end
 
 
 //=============================================================================
