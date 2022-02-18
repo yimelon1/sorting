@@ -18,6 +18,7 @@
 //	2022/01/19: think about 3x3 shortcut 
 //		1. choose cfg_mode for 3 (normal size layer) and 4 (layer3x)
 //	2022/02/09: new mode 4 ,5 ,6 sim ok
+//	2022/02/17: new mode 7 filter mode 
 //----------------------------------------------------------------------
 //	cfg_mode = 1 transform 3x3 ofmap into channel-major order map	for 1x1 convolution
 //	cfg_mode = 2 made the 31 to 32 transform success on simulation 
@@ -26,6 +27,7 @@
 //	cfg_mode = 4	for size13 row-major order		---2022/02/08: new mode 4
 //	cfg_mode = 5	for size26 row-major order		---2022/02/08: new mode 5 and 6
 //	cfg_mode = 6	for size52 row-major order		---2022/02/08: new mode 5 and 6
+//	cfg_mode = 7	gather mem non filter	---2022/02/17: new mode 7  for Conv1x1_transform_complete
 // ============================================================================
 
 
@@ -219,7 +221,7 @@ reg dly0_en_sort_data , dly1_en_sort_data ;
 reg dly0_en_output_data ,dly1_en_output_data ;
 reg dly0_reset_store_cnt , dly1_reset_store_cnt , dly2_reset_store_cnt ;	//hope not use
 reg dly0_cnt_output_last , dly1_cnt_output_last	;		
-reg [ 4:0 ] dly0_soz_state_cnt , dly1_soz_state_cnt;
+reg [ 5:0 ] dly0_soz_state_cnt , dly1_soz_state_cnt;
 
 //---- ending_signal ----
 reg full_data_output_done ;
@@ -357,59 +359,59 @@ always@(*)begin
     case(current_state )
     IDLE : begin
         status_reg_fsm = 6'b000001;
-		en_store_data <= 0; 
-        en_sort_data <= 0;
-        en_output_data <= 0;
-		en_reset_cnt <= 0	;
-		en_cfg		<= 0	;	
+		en_store_data 	= 0	; 
+        en_sort_data 	= 0	;
+        en_output_data 	= 0	;
+		en_reset_cnt 	= 0	;
+		en_cfg			= 0	;	
     end
 	CFG_READ : begin
 		status_reg_fsm = 6'b000010;
-		en_store_data <= 0; 
-        en_sort_data <= 0;
-        en_output_data <= 0;
-		en_reset_cnt <= 0	;
-		en_cfg		<= 1	;
+		en_store_data 	= 0	; 
+        en_sort_data 	= 0	;
+        en_output_data 	= 0	;
+		en_reset_cnt 	= 0	;
+		en_cfg			= 1	;
 	end
     STORE : begin
 		status_reg_fsm = 6'b000100;
-        en_store_data <= 1; 
-        en_sort_data <= 0;
-        en_output_data <= 0;
-		en_reset_cnt <= 0	;
-		en_cfg		<= 0	;
+        en_store_data 	= 1	; 
+        en_sort_data 	= 0	;
+        en_output_data 	= 0	;
+		en_reset_cnt 	= 0	;
+		en_cfg			= 0	;
     end
     SORT :begin
 		status_reg_fsm = 6'b001000;
-        en_store_data <= 0; 
-        en_sort_data <= 1;
-        en_output_data <= 0;
-		en_reset_cnt <= 0	;
-		en_cfg		<= 0	;
+        en_store_data 	= 0	; 
+        en_sort_data 	= 1	;
+        en_output_data 	= 0	;
+		en_reset_cnt 	= 0	;
+		en_cfg			= 0	;
     end
     OUTPUT :begin
 		status_reg_fsm = 6'b010000;
-        en_store_data <= 0; 
-        en_sort_data <= 0;
-        en_output_data <= 1; 
-		en_reset_cnt <= 0	;
-		en_cfg		<= 0	;
+        en_store_data 	= 0	; 
+        en_sort_data 	= 0	;
+        en_output_data 	= 1	; 
+		en_reset_cnt 	= 0	;
+		en_cfg			= 0	;
     end
 	RESET_CNT : begin
 		status_reg_fsm = 6'b100000	;
-        en_store_data <= 0	; 
-        en_sort_data <= 0	;
-        en_output_data <= 0	;
-		en_reset_cnt <= 1	;
-		en_cfg		<= 0	;
+        en_store_data 	= 0	; 
+        en_sort_data 	= 0	;
+        en_output_data 	= 0	;
+		en_reset_cnt 	= 1	;
+		en_cfg			= 0	;
 	end
     default :begin
 		status_reg_fsm = 6'b000000;
-        en_store_data <= 0	; 
-        en_sort_data <= 0	;
-        en_output_data <= 0	;
-		en_reset_cnt <= 0	;
-		en_cfg		<= 0	;
+        en_store_data 	= 0	; 
+        en_sort_data 	= 0	;
+        en_output_data 	= 0	;
+		en_reset_cnt 	= 0	;
+		en_cfg			= 0	;
     end
     endcase
 
@@ -870,13 +872,14 @@ count_yi_v3 #(
 );
 
 //---- soz stage counter ----
-wire [ 4:0 ]	fnum_soz_state_cnt , soz_state_cnt;	// final number of soz state counter
-assign fnum_soz_state_cnt = (cvtr_mode4 ) ? 	5'd27: 
-								(cvtr_mode5 ) ? 	5'd25: 
-									(cvtr_mode6 ) ? 	5'd20: 
-								5'd0	;
+wire [ 5:0 ]	fnum_soz_state_cnt , soz_state_cnt;	// final number of soz state counter
+assign fnum_soz_state_cnt = (cvtr_mode4 ) ? 	6'd27: 
+								(cvtr_mode5 ) ? 	6'd25: 
+									(cvtr_mode6 ) ? 	6'd20: 
+										(cvtr_mode7 ) ? 	6'd64: 
+								6'd0	;
 count_yi_v3 #(
-    .BITS_OF_END_NUMBER( 5  ) 
+    .BITS_OF_END_NUMBER( 6  ) 
 )cnt_20(
     .clk ( clk ),
     .reset ( cnt_rst ), 
@@ -886,11 +889,12 @@ count_yi_v3 #(
 );
 
 
+
 // ---- SORT_state : sto address generator----
 assign multi_ch_selec 	= ch_selector * cfg_rowbase_ch_step ;		// use config
 assign multi_ch_part 	= ch_part * cfg_rowbase_chpart_step ;		// use config
 assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 )?			multi_ch_selec + multi_ch_part + col_part : 
-							(cvtr_mode3 )?					multi_ch_part 	+ col_in_trans :
+							(cvtr_mode3 | cvtr_mode7 )?					multi_ch_part 	+ col_in_trans :
 							(cvtr_mode4 | cvtr_mode5  )?			multi_ch_part 	+ col_in_trans :
 							( cvtr_mode6 )?					multi_ch_part 	+ col_in_trans + multi_ch_selec:
 															10'd0	;
@@ -905,7 +909,7 @@ always@( * )begin
 			en_col_part		=	( en_sort_data & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 ) & (sram_choo == 'd1 ) & ( col_in_trans == 7))	?	1'd1	: 1'd0;
 		end
 		
-		4'd3: begin
+		4'd3 , 4'd7 : begin
 			en_ch_selector 	= 	1'd0 ;
 			en_ch_part 		= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ))?		1'd1	: 1'd0; 	 	
 			en_sram_choo 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & (ch_part == cfg_ch_part_num - 'd1) )?		1'd1	: 1'd0;
@@ -920,33 +924,33 @@ always@( * )begin
 			en_sram_choo 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & (ch_part == cfg_ch_part_num - 'd1) )?		1'd1	: 1'd0;
 			if( en_sort_data )begin
 				case( soz_state_cnt )	// check enable setting on excel
-					5'd0	: en_col_in_trans =	1'd1	;
-					5'd1	: en_col_in_trans =	1'd1	;		
-					5'd2	: en_col_in_trans =	1'd0	;	
-					5'd3	: en_col_in_trans =	1'd1	;
-					5'd4	: en_col_in_trans =	1'd0	;
-					5'd5	: en_col_in_trans =	1'd1	;		
-					5'd6	: en_col_in_trans =	1'd0	;
-					5'd7	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits
-					5'd8	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits	//channel end	
-					5'd9	: en_col_in_trans =	1'd0	;	
-					5'd10	: en_col_in_trans =	1'd1	;	
-					5'd11	: en_col_in_trans =	1'd0	;	
-					5'd12	: en_col_in_trans =	1'd1	;	
-					5'd13	: en_col_in_trans =	1'd0	;
-					5'd14	: en_col_in_trans =	1'd1	;
-					5'd15	: en_col_in_trans =	1'd0	;
-					5'd16	: en_col_in_trans =	1'd1	;		
-					5'd17	: en_col_in_trans =	1'd0	;
-					5'd18	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits
-					5'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
-					5'd20	: en_col_in_trans =	1'd0	;
-					5'd21	: en_col_in_trans =	1'd1	;
-					5'd22	: en_col_in_trans =	1'd0	;
-					5'd23	: en_col_in_trans =	1'd1	;		
-					5'd24	: en_col_in_trans =	1'd0	;
-					5'd25	: en_col_in_trans =	1'd1	;
-					5'd26	: en_col_in_trans =	1'd1	;		
+					6'd0	: en_col_in_trans =	1'd1	;
+					6'd1	: en_col_in_trans =	1'd1	;		
+					6'd2	: en_col_in_trans =	1'd0	;	
+					6'd3	: en_col_in_trans =	1'd1	;
+					6'd4	: en_col_in_trans =	1'd0	;
+					6'd5	: en_col_in_trans =	1'd1	;		
+					6'd6	: en_col_in_trans =	1'd0	;
+					6'd7	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits
+					6'd8	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits	//channel end	
+					6'd9	: en_col_in_trans =	1'd0	;	
+					6'd10	: en_col_in_trans =	1'd1	;	
+					6'd11	: en_col_in_trans =	1'd0	;	
+					6'd12	: en_col_in_trans =	1'd1	;	
+					6'd13	: en_col_in_trans =	1'd0	;
+					6'd14	: en_col_in_trans =	1'd1	;
+					6'd15	: en_col_in_trans =	1'd0	;
+					6'd16	: en_col_in_trans =	1'd1	;		
+					6'd17	: en_col_in_trans =	1'd0	;
+					6'd18	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits
+					6'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
+					6'd20	: en_col_in_trans =	1'd0	;
+					6'd21	: en_col_in_trans =	1'd1	;
+					6'd22	: en_col_in_trans =	1'd0	;
+					6'd23	: en_col_in_trans =	1'd1	;		
+					6'd24	: en_col_in_trans =	1'd0	;
+					6'd25	: en_col_in_trans =	1'd1	;
+					6'd26	: en_col_in_trans =	1'd1	;		
 					
 					default : en_col_in_trans =	 1'd0 ;		
 				endcase
@@ -964,31 +968,31 @@ always@( * )begin
 			en_sram_choo 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & (ch_part == cfg_ch_part_num - 'd1) )?		1'd1	: 1'd0;
 			if( en_sort_data )begin
 				case( soz_state_cnt )	
-					5'd0	: en_col_in_trans =	1'd1	;
-					5'd1	: en_col_in_trans =	1'd1	;		
-					5'd2	: en_col_in_trans =	1'd1	;	
-					5'd3	: en_col_in_trans =	1'd1	;
-					5'd4	: en_col_in_trans =	1'd0	;
-					5'd5	: en_col_in_trans =	1'd1	;		
-					5'd6	: en_col_in_trans =	1'd0	;
-					5'd7	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits
-					5'd8	: en_col_in_trans =	1'd0	;		// data has not filled in 64 bits	//channel end	
-					5'd9	: en_col_in_trans =	1'd1	;	
-					5'd10	: en_col_in_trans =	1'd1	;	
-					5'd11	: en_col_in_trans =	1'd0	;	
-					5'd12	: en_col_in_trans =	1'd1	;	
-					5'd13	: en_col_in_trans =	1'd0	;
-					5'd14	: en_col_in_trans =	1'd1	;
-					5'd15	: en_col_in_trans =	1'd0	;
-					5'd16	: en_col_in_trans =	1'd1	;		
-					5'd17	: en_col_in_trans =	1'd1	;
-					5'd18	: en_col_in_trans =	1'd0	;	// data has not filled in 64 bits
-					5'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
-					5'd20	: en_col_in_trans =	1'd0	;
-					5'd21	: en_col_in_trans =	1'd1	;
-					5'd22	: en_col_in_trans =	1'd0	;
-					5'd23	: en_col_in_trans =	1'd1	;		
-					5'd24	: en_col_in_trans =	1'd1	;
+					6'd0	: en_col_in_trans =	1'd1	;
+					6'd1	: en_col_in_trans =	1'd1	;		
+					6'd2	: en_col_in_trans =	1'd1	;	
+					6'd3	: en_col_in_trans =	1'd1	;
+					6'd4	: en_col_in_trans =	1'd0	;
+					6'd5	: en_col_in_trans =	1'd1	;		
+					6'd6	: en_col_in_trans =	1'd0	;
+					6'd7	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits
+					6'd8	: en_col_in_trans =	1'd0	;		// data has not filled in 64 bits	//channel end	
+					6'd9	: en_col_in_trans =	1'd1	;	
+					6'd10	: en_col_in_trans =	1'd1	;	
+					6'd11	: en_col_in_trans =	1'd0	;	
+					6'd12	: en_col_in_trans =	1'd1	;	
+					6'd13	: en_col_in_trans =	1'd0	;
+					6'd14	: en_col_in_trans =	1'd1	;
+					6'd15	: en_col_in_trans =	1'd0	;
+					6'd16	: en_col_in_trans =	1'd1	;		
+					6'd17	: en_col_in_trans =	1'd1	;
+					6'd18	: en_col_in_trans =	1'd0	;	// data has not filled in 64 bits
+					6'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
+					6'd20	: en_col_in_trans =	1'd0	;
+					6'd21	: en_col_in_trans =	1'd1	;
+					6'd22	: en_col_in_trans =	1'd0	;
+					6'd23	: en_col_in_trans =	1'd1	;		
+					6'd24	: en_col_in_trans =	1'd1	;
 			
 					default : en_col_in_trans =	 1'd0 ;		
 				endcase
@@ -1006,26 +1010,26 @@ always@( * )begin
 			en_sram_choo 	= 	(en_sort_data & ( col_in_trans == cfg_fcol_in_trans - 'd1 ) & (ch_part == cfg_ch_part_num - 'd1) & ( ch_selector == 5'd1 ))?		1'd1	: 1'd0;
 			if( en_sort_data )begin
 				case( soz_state_cnt )	
-					5'd0	: en_col_in_trans =	1'd1	;
-					5'd1	: en_col_in_trans =	1'd1	;		
-					5'd2	: en_col_in_trans =	1'd1	;	
-					5'd3	: en_col_in_trans =	1'd1	;
-					5'd4	: en_col_in_trans =	1'd1	;
-					5'd5	: en_col_in_trans =	1'd1	;		
-					5'd6	: en_col_in_trans =	1'd1	;
-					5'd7	: en_col_in_trans =	1'd0	;		// data has not filled in 64 bits
-					5'd8	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits	//channel end	
-					5'd9	: en_col_in_trans =	1'd0	;	
-					5'd10	: en_col_in_trans =	1'd1	;	
-					5'd11	: en_col_in_trans =	1'd0	;	
-					5'd12	: en_col_in_trans =	1'd1	;	
-					5'd13	: en_col_in_trans =	1'd0	;
-					5'd14	: en_col_in_trans =	1'd1	;
-					5'd15	: en_col_in_trans =	1'd0	;
-					5'd16	: en_col_in_trans =	1'd1	;		
-					5'd17	: en_col_in_trans =	1'd0	;
-					5'd18	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits
-					5'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
+					6'd0	: en_col_in_trans =	1'd1	;
+					6'd1	: en_col_in_trans =	1'd1	;		
+					6'd2	: en_col_in_trans =	1'd1	;	
+					6'd3	: en_col_in_trans =	1'd1	;
+					6'd4	: en_col_in_trans =	1'd1	;
+					6'd5	: en_col_in_trans =	1'd1	;		
+					6'd6	: en_col_in_trans =	1'd1	;
+					6'd7	: en_col_in_trans =	1'd0	;		// data has not filled in 64 bits
+					6'd8	: en_col_in_trans =	1'd1	;		// data has not filled in 64 bits	//channel end	
+					6'd9	: en_col_in_trans =	1'd0	;	
+					6'd10	: en_col_in_trans =	1'd1	;	
+					6'd11	: en_col_in_trans =	1'd0	;	
+					6'd12	: en_col_in_trans =	1'd1	;	
+					6'd13	: en_col_in_trans =	1'd0	;
+					6'd14	: en_col_in_trans =	1'd1	;
+					6'd15	: en_col_in_trans =	1'd0	;
+					6'd16	: en_col_in_trans =	1'd1	;		
+					6'd17	: en_col_in_trans =	1'd0	;
+					6'd18	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits
+					6'd19	: en_col_in_trans =	1'd1	;	// data has not filled in 64 bits	
 					
 					default : en_col_in_trans =	 1'd0 ;		
 				endcase
@@ -1059,39 +1063,39 @@ always@(*) begin
 		4'd2 : begin
 			en_sort_addr = ( en_sort_data &  ( dly1_ch_selector == 'd7) )	?	1'd1 : 1'd0 ;
 		end
-		4'd3: begin
+		4'd3 , 4'd7 : begin
 			en_sort_addr = (dly1_en_sort_data  )	?	1'd1 : 1'd0 ;
 		end
 		4'd4:begin
 			if( dly1_en_sort_data )begin
 				case( dly1_soz_state_cnt )	
-					5'd0	: en_sort_addr =	1'd1	;
-					5'd1	: en_sort_addr =	1'd0	;		
-					5'd2	: en_sort_addr =	1'd1	;	
-					5'd3	: en_sort_addr =	1'd0	;
-					5'd4	: en_sort_addr =	1'd1	;
-					5'd5	: en_sort_addr =	1'd0	;		
-					5'd6	: en_sort_addr =	1'd1	;
-					5'd7	: en_sort_addr =	1'd0	;		// data has not filled in 64 bits
-					5'd8	: en_sort_addr =	1'd0	;		// data has not filled in 64 bits	//channel end	
-					5'd9	: en_sort_addr =	1'd1	;	
-					5'd10	: en_sort_addr =	1'd0	;	
-					5'd11	: en_sort_addr =	1'd1	;	
-					5'd12	: en_sort_addr =	1'd0	;	
-					5'd13	: en_sort_addr =	1'd1	;
-					5'd14	: en_sort_addr =	1'd0	;
-					5'd15	: en_sort_addr =	1'd1	;
-					5'd16	: en_sort_addr =	1'd0	;		
-					5'd17	: en_sort_addr =	1'd1	;
-					5'd18	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
-					5'd19	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	
-					5'd20	: en_sort_addr =	1'd1	;
-					5'd21	: en_sort_addr =	1'd0	;
-					5'd22	: en_sort_addr =	1'd1	;
-					5'd23	: en_sort_addr =	1'd0	;		
-					5'd24	: en_sort_addr =	1'd1	;
-					5'd25	: en_sort_addr =	1'd0	;
-					5'd26	: en_sort_addr =	1'd1	;		
+					6'd0	: en_sort_addr =	1'd1	;
+					6'd1	: en_sort_addr =	1'd0	;		
+					6'd2	: en_sort_addr =	1'd1	;	
+					6'd3	: en_sort_addr =	1'd0	;
+					6'd4	: en_sort_addr =	1'd1	;
+					6'd5	: en_sort_addr =	1'd0	;		
+					6'd6	: en_sort_addr =	1'd1	;
+					6'd7	: en_sort_addr =	1'd0	;		// data has not filled in 64 bits
+					6'd8	: en_sort_addr =	1'd0	;		// data has not filled in 64 bits	//channel end	
+					6'd9	: en_sort_addr =	1'd1	;	
+					6'd10	: en_sort_addr =	1'd0	;	
+					6'd11	: en_sort_addr =	1'd1	;	
+					6'd12	: en_sort_addr =	1'd0	;	
+					6'd13	: en_sort_addr =	1'd1	;
+					6'd14	: en_sort_addr =	1'd0	;
+					6'd15	: en_sort_addr =	1'd1	;
+					6'd16	: en_sort_addr =	1'd0	;		
+					6'd17	: en_sort_addr =	1'd1	;
+					6'd18	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
+					6'd19	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	
+					6'd20	: en_sort_addr =	1'd1	;
+					6'd21	: en_sort_addr =	1'd0	;
+					6'd22	: en_sort_addr =	1'd1	;
+					6'd23	: en_sort_addr =	1'd0	;		
+					6'd24	: en_sort_addr =	1'd1	;
+					6'd25	: en_sort_addr =	1'd0	;
+					6'd26	: en_sort_addr =	1'd1	;		
 					
 					default : en_sort_addr =	 1'd0 ;		
 				endcase
@@ -1106,31 +1110,31 @@ always@(*) begin
 		4'd5:begin		//size26
 			if( dly1_en_sort_data )begin
 				case( dly1_soz_state_cnt )	
-					5'd0	: en_sort_addr =	1'd1	;
-					5'd1	: en_sort_addr =	1'd1	;		
-					5'd2	: en_sort_addr =	1'd1	;	
-					5'd3	: en_sort_addr =	1'd0	;
-					5'd4	: en_sort_addr =	1'd1	;
-					5'd5	: en_sort_addr =	1'd0	;		
-					5'd6	: en_sort_addr =	1'd1	;
-					5'd7	: en_sort_addr =	1'd0	;		
-					5'd8	: en_sort_addr =	1'd1	;		
-					5'd9	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
-					5'd10	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	//channel end	
-					5'd11	: en_sort_addr =	1'd1	;	
-					5'd12	: en_sort_addr =	1'd0	;	
-					5'd13	: en_sort_addr =	1'd1	;
-					5'd14	: en_sort_addr =	1'd0	;
-					5'd15	: en_sort_addr =	1'd1	;
-					5'd16	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	
-					5'd17	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
-					5'd18	: en_sort_addr =	1'd1	;	
-					5'd19	: en_sort_addr =	1'd0	;		
-					5'd20	: en_sort_addr =	1'd1	;
-					5'd21	: en_sort_addr =	1'd0	;
-					5'd22	: en_sort_addr =	1'd1	;
-					5'd23	: en_sort_addr =	1'd0	;		
-					5'd24	: en_sort_addr =	1'd1	;	
+					6'd0	: en_sort_addr =	1'd1	;
+					6'd1	: en_sort_addr =	1'd1	;		
+					6'd2	: en_sort_addr =	1'd1	;	
+					6'd3	: en_sort_addr =	1'd0	;
+					6'd4	: en_sort_addr =	1'd1	;
+					6'd5	: en_sort_addr =	1'd0	;		
+					6'd6	: en_sort_addr =	1'd1	;
+					6'd7	: en_sort_addr =	1'd0	;		
+					6'd8	: en_sort_addr =	1'd1	;		
+					6'd9	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
+					6'd10	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	//channel end	
+					6'd11	: en_sort_addr =	1'd1	;	
+					6'd12	: en_sort_addr =	1'd0	;	
+					6'd13	: en_sort_addr =	1'd1	;
+					6'd14	: en_sort_addr =	1'd0	;
+					6'd15	: en_sort_addr =	1'd1	;
+					6'd16	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits	
+					6'd17	: en_sort_addr =	1'd0	;	// data has not filled in 64 bits
+					6'd18	: en_sort_addr =	1'd1	;	
+					6'd19	: en_sort_addr =	1'd0	;		
+					6'd20	: en_sort_addr =	1'd1	;
+					6'd21	: en_sort_addr =	1'd0	;
+					6'd22	: en_sort_addr =	1'd1	;
+					6'd23	: en_sort_addr =	1'd0	;		
+					6'd24	: en_sort_addr =	1'd1	;	
 					default : en_sort_addr =	 1'd0 ;		
 				endcase
 			end 
@@ -1144,26 +1148,26 @@ always@(*) begin
 		4'd6:begin			// size52
 			if( dly1_en_sort_data )begin
 				case( dly1_soz_state_cnt )	
-					5'd0	: en_sort_addr =	1'd1	;
-					5'd1	: en_sort_addr =	1'd1	;		
-					5'd2	: en_sort_addr =	1'd1	;	
-					5'd3	: en_sort_addr =	1'd1	;
-					5'd4	: en_sort_addr =	1'd1	;
-					5'd5	: en_sort_addr =	1'd1	;		
-					5'd6	: en_sort_addr =	1'd0	;
-					5'd7	: en_sort_addr =	1'd1	;	
-					5'd8	: en_sort_addr =	1'd0	;	
-					5'd9	: en_sort_addr =	1'd1	;	
-					5'd10	: en_sort_addr =	1'd0	;	
-					5'd11	: en_sort_addr =	1'd1	;	
-					5'd12	: en_sort_addr =	1'd0	;	
-					5'd13	: en_sort_addr =	1'd1	;
-					5'd14	: en_sort_addr =	1'd0	;
-					5'd15	: en_sort_addr =	1'd1	;
-					5'd16	: en_sort_addr =	1'd0	;		
-					5'd17	: en_sort_addr =	1'd1	;
-					5'd18	: en_sort_addr =	1'd0	;	
-					5'd19	: en_sort_addr =	1'd1	;		
+					6'd0	: en_sort_addr =	1'd1	;
+					6'd1	: en_sort_addr =	1'd1	;		
+					6'd2	: en_sort_addr =	1'd1	;	
+					6'd3	: en_sort_addr =	1'd1	;
+					6'd4	: en_sort_addr =	1'd1	;
+					6'd5	: en_sort_addr =	1'd1	;		
+					6'd6	: en_sort_addr =	1'd0	;
+					6'd7	: en_sort_addr =	1'd1	;	
+					6'd8	: en_sort_addr =	1'd0	;	
+					6'd9	: en_sort_addr =	1'd1	;	
+					6'd10	: en_sort_addr =	1'd0	;	
+					6'd11	: en_sort_addr =	1'd1	;	
+					6'd12	: en_sort_addr =	1'd0	;	
+					6'd13	: en_sort_addr =	1'd1	;
+					6'd14	: en_sort_addr =	1'd0	;
+					6'd15	: en_sort_addr =	1'd1	;
+					6'd16	: en_sort_addr =	1'd0	;		
+					6'd17	: en_sort_addr =	1'd1	;
+					6'd18	: en_sort_addr =	1'd0	;	
+					6'd19	: en_sort_addr =	1'd1	;		
 					default : en_sort_addr =	 1'd0 ;		
 				endcase
 			end 
@@ -1198,75 +1202,75 @@ always@( * )begin
 			end
 		4'd4:begin
 				case( dly1_soz_state_cnt )	
-					5'd9	,5'd11	: wea_soz1_choo = 	8'b0000_0001		;
-					5'd20	,5'd22	: wea_soz1_choo = 	8'b0000_0011		;
-					5'd2	,5'd4	: wea_soz1_choo = 	8'b0000_0111		;
-					5'd13	,5'd15	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd24	,5'd26	: wea_soz1_choo = 	8'b0001_1111		;
-					5'd8			: wea_soz1_choo =	8'b0011_1110		;
-					5'd6			: wea_soz1_choo =	8'b0011_1111		;
-					5'd19			: wea_soz1_choo = 	8'b0111_1100		;
-					5'd17			: wea_soz1_choo = 	8'b0111_1111		;
-					5'd16	,5'd18	: wea_soz1_choo = 	8'b1000_0000		;
-					5'd23	,5'd25	: wea_soz1_choo = 	8'b1110_0000		;
-					5'd5	,5'd7	: wea_soz1_choo = 	8'b1100_0000		;
-					5'd23	,5'd25	: wea_soz1_choo = 	8'b1110_0000		;
-					5'd12	,5'd14	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd1	,5'd3	: wea_soz1_choo = 	8'b1111_1000		;
-					5'd21			: wea_soz1_choo = 	8'b1111_1100		;
-					5'd10			: wea_soz1_choo = 	8'b1111_1110		;
-					5'd0			: wea_soz1_choo = 	8'b1111_1111		;
+					6'd9	,6'd11	: wea_soz1_choo = 	8'b0000_0001		;
+					6'd20	,6'd22	: wea_soz1_choo = 	8'b0000_0011		;
+					6'd2	,6'd4	: wea_soz1_choo = 	8'b0000_0111		;
+					6'd13	,6'd15	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd24	,6'd26	: wea_soz1_choo = 	8'b0001_1111		;
+					6'd8			: wea_soz1_choo =	8'b0011_1110		;
+					6'd6			: wea_soz1_choo =	8'b0011_1111		;
+					6'd19			: wea_soz1_choo = 	8'b0111_1100		;
+					6'd17			: wea_soz1_choo = 	8'b0111_1111		;
+					6'd16	,6'd18	: wea_soz1_choo = 	8'b1000_0000		;
+					6'd23	,6'd25	: wea_soz1_choo = 	8'b1110_0000		;
+					6'd5	,6'd7	: wea_soz1_choo = 	8'b1100_0000		;
+					6'd23	,6'd25	: wea_soz1_choo = 	8'b1110_0000		;
+					6'd12	,6'd14	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd1	,6'd3	: wea_soz1_choo = 	8'b1111_1000		;
+					6'd21			: wea_soz1_choo = 	8'b1111_1100		;
+					6'd10			: wea_soz1_choo = 	8'b1111_1110		;
+					6'd0			: wea_soz1_choo = 	8'b1111_1111		;
 					default : wea_soz1_choo = 8'hff ;
 				endcase
 			end
 		4'd5:begin
 				case( dly1_soz_state_cnt )	
-					5'd3	: wea_soz1_choo = 	8'b1100_0000		;
-					5'd4	: wea_soz1_choo =	8'b0011_1111		;
-					5'd5	: wea_soz1_choo =	8'b1100_0000		;
-					5'd6	: wea_soz1_choo = 	8'b0011_1111		;
-					5'd7	: wea_soz1_choo = 	8'b1100_0000		;
-					5'd8	: wea_soz1_choo =	8'b0011_1111		;
-					5'd9	: wea_soz1_choo =	8'b1100_0000		;
-					5'd10	: wea_soz1_choo = 	8'b0011_0000		;
-					5'd11	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd12	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd13	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd14	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd15	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd16	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd17	: wea_soz1_choo = 	8'b0000_1100		;
-					5'd18	: wea_soz1_choo = 	8'b0000_0011		;
-					5'd19	: wea_soz1_choo = 	8'b1111_1100		;
-					5'd20	: wea_soz1_choo = 	8'b0000_0011		;
-					5'd21	: wea_soz1_choo = 	8'b1111_1100		;
-					5'd22	: wea_soz1_choo = 	8'b0000_0011		;
-					5'd23	: wea_soz1_choo = 	8'b1111_1100		;
-					5'd24	: wea_soz1_choo = 	8'b0000_0011		;
+					6'd3	: wea_soz1_choo = 	8'b1100_0000		;
+					6'd4	: wea_soz1_choo =	8'b0011_1111		;
+					6'd5	: wea_soz1_choo =	8'b1100_0000		;
+					6'd6	: wea_soz1_choo = 	8'b0011_1111		;
+					6'd7	: wea_soz1_choo = 	8'b1100_0000		;
+					6'd8	: wea_soz1_choo =	8'b0011_1111		;
+					6'd9	: wea_soz1_choo =	8'b1100_0000		;
+					6'd10	: wea_soz1_choo = 	8'b0011_0000		;
+					6'd11	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd12	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd13	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd14	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd15	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd16	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd17	: wea_soz1_choo = 	8'b0000_1100		;
+					6'd18	: wea_soz1_choo = 	8'b0000_0011		;
+					6'd19	: wea_soz1_choo = 	8'b1111_1100		;
+					6'd20	: wea_soz1_choo = 	8'b0000_0011		;
+					6'd21	: wea_soz1_choo = 	8'b1111_1100		;
+					6'd22	: wea_soz1_choo = 	8'b0000_0011		;
+					6'd23	: wea_soz1_choo = 	8'b1111_1100		;
+					6'd24	: wea_soz1_choo = 	8'b0000_0011		;
 					default : wea_soz1_choo = 8'hff ;		// include 0,1,2
 				endcase
 			end
 		4'd6:begin
 				case( dly1_soz_state_cnt )	
-					5'd6	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd7	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd8	: wea_soz1_choo =	8'b1111_0000		;
-					5'd9	: wea_soz1_choo =	8'b0000_1111		;
-					5'd10	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd11	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd12	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd13	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd14	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd15	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd16	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd17	: wea_soz1_choo = 	8'b0000_1111		;
-					5'd18	: wea_soz1_choo = 	8'b1111_0000		;
-					5'd19	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd6	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd7	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd8	: wea_soz1_choo =	8'b1111_0000		;
+					6'd9	: wea_soz1_choo =	8'b0000_1111		;
+					6'd10	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd11	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd12	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd13	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd14	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd15	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd16	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd17	: wea_soz1_choo = 	8'b0000_1111		;
+					6'd18	: wea_soz1_choo = 	8'b1111_0000		;
+					6'd19	: wea_soz1_choo = 	8'b0000_1111		;
 
 					default : wea_soz1_choo = 8'hff ;		// include 0,1,2,3,4,5
 				endcase
 			end
-		default : begin		// include mode 3
+		default : begin		// include mode 3 , 7
 			wea_soz1_choo = 8'hff ;
 		end
 
@@ -1280,7 +1284,7 @@ end
 //				and choose which sram data is needed. 
 //				data position should be changed by following logic.
 //----------------------------------------------------------------------- 
-assign row1_sort_done = ( cvtr_mode3 | cvtr_mode5 | cvtr_mode6 )			?	cnt_soz1_addr == 'd2047  :
+assign row1_sort_done = ( cvtr_mode3 | cvtr_mode5 | cvtr_mode6 | cvtr_mode7 )			?	cnt_soz1_addr == 'd2047  :
 							( cvtr_mode4 )									? 	(cnt_soz1_addr == 'd1023 ) :
 								( cvtr_mode2 )								? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) :
 																		( (cnt_soz1_addr == 'd2047 ) & ( dly1_ch_selector == 3'd7 ))	;
@@ -1307,7 +1311,8 @@ end
 
 always@( * )begin
 	case( cfg_mode[3 -: 4] )
-		4'd1 , 4'd2:begin
+		4'd1 , 
+		4'd2 :begin
 			case( dly1_ch_selector )
 				3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
 				3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
@@ -1320,99 +1325,100 @@ always@( * )begin
 				default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
 			endcase
 			end
-		4'd3:begin
+		4'd3 ,4'd7 :begin
 			re_size_reg = sram_sto_choose ;
 			end
 		4'd4:begin
 			case( dly1_soz_state_cnt )	
-				5'd0	: re_size_reg =		sram_sto_choose		;
-				5'd1	: re_size_reg =		{	sram_sto_choose[63 -:40]	,		24'h000						};	//channel end	
-				5'd2	: re_size_reg =		{		40'h0_0000				,	sram_sto_choose[63 -:24]		};
-				5'd3	: re_size_reg =		{	sram_sto_choose[39 -:40]	,		24'h000						};
-				5'd4	: re_size_reg =		{		40'h0_0000				,	sram_sto_choose[63 -:24]		};
-				5'd5	: re_size_reg =		{	sram_sto_choose[39 -:16]	,		48'h00_0000					};	//channel end	
-				5'd6	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:48]		};
-				5'd7	: re_size_reg =		{	sram_sto_choose[15 -:16]	,		48'h00_0000					};
-				5'd8	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:40]	, 8'd0 };	//channel end	
-				5'd9	: re_size_reg =		{ 		56'h000_0000			,	sram_sto_choose[63 -:8]			};	
-				5'd10	: re_size_reg =		{ 	sram_sto_choose[55 -:56]	,	8'd0 							};	
-				5'd11	: re_size_reg =		{		56'h000_0000			,	sram_sto_choose[63 -:8]			};	
-				5'd12	: re_size_reg =		{	sram_sto_choose[55 -:32]	,		32'h0000					};	//channel end	
-				5'd13	: re_size_reg =		{ 		32'h0000				,	sram_sto_choose[63 -:32]		};
-				5'd14	: re_size_reg =		{ 	sram_sto_choose[31 -:32]	,		32'h0000					};
-				5'd15	: re_size_reg =		{		32'h0000				,	sram_sto_choose[63 -:32]		};
-				5'd16	: re_size_reg =		{	sram_sto_choose[31 -:8]		,		56'h000_0000				};	//channel end	
-				5'd17	: re_size_reg =		{	8'd0						,	sram_sto_choose[63 -:56]		};
-				5'd18	: re_size_reg =		{	sram_sto_choose[7 -:8]		,		56'h000_0000				};
-				5'd19	: re_size_reg =		{	8'd0						,	sram_sto_choose[63 -:40]	,16'h00 };	//channel end	
-				5'd20	: re_size_reg =		{		48'h00_0000				,	sram_sto_choose[63 -:16]		};
-				5'd21	: re_size_reg =		{	sram_sto_choose[47 -:48]	,	16'h00							};
-				5'd22	: re_size_reg =		{		48'h00_0000				,	sram_sto_choose[63 -:16]		};
-				5'd23	: re_size_reg =		{	sram_sto_choose[47 -:24]	,		40'h0_0000					};	//channel end	
-				5'd24	: re_size_reg =		{		24'h000					,	sram_sto_choose[63 -:40]	 	};
-				5'd25	: re_size_reg =		{ 	sram_sto_choose[23 -:24]	,		40'h0_0000					};
-				5'd26	: re_size_reg =		{		24'h000					,	sram_sto_choose[63 -:40]	 	};	//channel end	
+				6'd0	: re_size_reg =		sram_sto_choose		;
+				6'd1	: re_size_reg =		{	sram_sto_choose[63 -:40]	,		24'h000						};	//channel end	
+				6'd2	: re_size_reg =		{		40'h0_0000				,	sram_sto_choose[63 -:24]		};
+				6'd3	: re_size_reg =		{	sram_sto_choose[39 -:40]	,		24'h000						};
+				6'd4	: re_size_reg =		{		40'h0_0000				,	sram_sto_choose[63 -:24]		};
+				6'd5	: re_size_reg =		{	sram_sto_choose[39 -:16]	,		48'h00_0000					};	//channel end	
+				6'd6	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:48]		};
+				6'd7	: re_size_reg =		{	sram_sto_choose[15 -:16]	,		48'h00_0000					};
+				6'd8	: re_size_reg =		{	16'h00						,	sram_sto_choose[63 -:40]	, 8'd0 };	//channel end	
+				6'd9	: re_size_reg =		{ 		56'h000_0000			,	sram_sto_choose[63 -:8]			};	
+				6'd10	: re_size_reg =		{ 	sram_sto_choose[55 -:56]	,	8'd0 							};	
+				6'd11	: re_size_reg =		{		56'h000_0000			,	sram_sto_choose[63 -:8]			};	
+				6'd12	: re_size_reg =		{	sram_sto_choose[55 -:32]	,		32'h0000					};	//channel end	
+				6'd13	: re_size_reg =		{ 		32'h0000				,	sram_sto_choose[63 -:32]		};
+				6'd14	: re_size_reg =		{ 	sram_sto_choose[31 -:32]	,		32'h0000					};
+				6'd15	: re_size_reg =		{		32'h0000				,	sram_sto_choose[63 -:32]		};
+				6'd16	: re_size_reg =		{	sram_sto_choose[31 -:8]		,		56'h000_0000				};	//channel end	
+				6'd17	: re_size_reg =		{	8'd0						,	sram_sto_choose[63 -:56]		};
+				6'd18	: re_size_reg =		{	sram_sto_choose[7 -:8]		,		56'h000_0000				};
+				6'd19	: re_size_reg =		{	8'd0						,	sram_sto_choose[63 -:40]	,16'h00 };	//channel end	
+				6'd20	: re_size_reg =		{		48'h00_0000				,	sram_sto_choose[63 -:16]		};
+				6'd21	: re_size_reg =		{	sram_sto_choose[47 -:48]	,	16'h00							};
+				6'd22	: re_size_reg =		{		48'h00_0000				,	sram_sto_choose[63 -:16]		};
+				6'd23	: re_size_reg =		{	sram_sto_choose[47 -:24]	,		40'h0_0000					};	//channel end	
+				6'd24	: re_size_reg =		{		24'h000					,	sram_sto_choose[63 -:40]	 	};
+				6'd25	: re_size_reg =		{ 	sram_sto_choose[23 -:24]	,		40'h0_0000					};
+				6'd26	: re_size_reg =		{		24'h000					,	sram_sto_choose[63 -:40]	 	};	//channel end	
 				
 				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
 			endcase
 		end	
 		4'd5:begin
 			case( dly1_soz_state_cnt )	
-				5'd0	: re_size_reg =		sram_sto_choose		;
-				5'd1	: re_size_reg =		sram_sto_choose		;
-				5'd2	: re_size_reg =		sram_sto_choose		;
-				5'd3	: re_size_reg =		{			sram_sto_choose[63 -:16]	,	48'd0	};
-				5'd4	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
-				5'd5	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};
-				5'd6	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
-				5'd7	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};
-				5'd8	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
-				5'd9	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};	
-				5'd10	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:16]	,	32'd0	};	//chend
-				5'd11	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
-				5'd12	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
-				5'd13	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
-				5'd14	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
-				5'd15	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
-				5'd16	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
-				5'd17	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:16]	,	16'd0	};
-				5'd18	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
-				5'd19	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
-				5'd20	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
-				5'd21	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
-				5'd22	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
-				5'd23	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
-				5'd24	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
+				6'd0	: re_size_reg =		sram_sto_choose		;
+				6'd1	: re_size_reg =		sram_sto_choose		;
+				6'd2	: re_size_reg =		sram_sto_choose		;
+				6'd3	: re_size_reg =		{			sram_sto_choose[63 -:16]	,	48'd0	};
+				6'd4	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
+				6'd5	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};
+				6'd6	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
+				6'd7	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};
+				6'd8	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:48]		};
+				6'd9	: re_size_reg =		{			sram_sto_choose[15 -:16]	,	48'd0	};	
+				6'd10	: re_size_reg =		{ 16'd0	,	sram_sto_choose[63 -:16]	,	32'd0	};	//chend
+				6'd11	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
+				6'd12	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
+				6'd13	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
+				6'd14	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
+				6'd15	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		};
+				6'd16	: re_size_reg =		{ 			sram_sto_choose[31 -:32]	,	32'd0	};
+				6'd17	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:16]	,	16'd0	};
+				6'd18	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
+				6'd19	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
+				6'd20	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
+				6'd21	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
+				6'd22	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
+				6'd23	: re_size_reg =		{ 			sram_sto_choose[47 -:48]	,	16'd0	};
+				6'd24	: re_size_reg =		{ 48'd0	,	sram_sto_choose[63 -:16]	 	};
 				
 				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
 			endcase
 		end	
 		4'd6:begin
 			case( dly1_soz_state_cnt )	
-				5'd0	: re_size_reg =		sram_sto_choose		;
-				5'd1	: re_size_reg =		sram_sto_choose		;
-				5'd2	: re_size_reg =		sram_sto_choose		;
-				5'd3	: re_size_reg =		sram_sto_choose		;
-				5'd4	: re_size_reg =		sram_sto_choose		;
-				5'd5	: re_size_reg =		sram_sto_choose		;
-				5'd6	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
-				5'd7	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		 		};
-				5'd8	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
-				5'd9	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		 		};
-				5'd10	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
-				5'd11	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
-				5'd12	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
-				5'd13	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
-				5'd14	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
-				5'd15	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
-				5'd16	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
-				5'd17	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
-				5'd18	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
-				5'd19	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				6'd0	: re_size_reg =		sram_sto_choose		;
+				6'd1	: re_size_reg =		sram_sto_choose		;
+				6'd2	: re_size_reg =		sram_sto_choose		;
+				6'd3	: re_size_reg =		sram_sto_choose		;
+				6'd4	: re_size_reg =		sram_sto_choose		;
+				6'd5	: re_size_reg =		sram_sto_choose		;
+				6'd6	: re_size_reg =		{			sram_sto_choose[63 -:32]	 , 	32'd0 	};
+				6'd7	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		 		};
+				6'd8	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
+				6'd9	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]		 		};
+				6'd10	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
+				6'd11	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				6'd12	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
+				6'd13	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				6'd14	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
+				6'd15	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				6'd16	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
+				6'd17	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
+				6'd18	: re_size_reg =		{			sram_sto_choose[31 -:32]	 , 	32'd0 	};
+				6'd19	: re_size_reg =		{ 32'd0	,	sram_sto_choose[63 -:32]				};
 
 				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
 			endcase
 		end
+
 		default : begin
 			re_size_reg = 64'hffff_ffff_ffff_ffff ;
 		end
@@ -1464,8 +1470,8 @@ end
 //---- delay soz state count ----
 always@(posedge clk) begin
 	if( reset )begin
-		dly0_soz_state_cnt <= 5'd0;
-		dly1_soz_state_cnt <= 5'd0;
+		dly0_soz_state_cnt <= 6'd0;
+		dly1_soz_state_cnt <= 6'd0;
 	end 
 	else begin
 		dly0_soz_state_cnt <= soz_state_cnt;
@@ -1484,7 +1490,9 @@ assign output_data = ( en_output_write ) ? dout_sram_soz1 : 'd0 ;
 assign row1_output_done = dly1_cnt_output_last ;
 assign dout_osif_last = dly1_cnt_output_last ;		// 10/14 need to wait for BRAM's reading data process about 2 clk
 assign dout_osif_write = en_output_write &  en_output_data;
-assign out_addr_num = (cvtr_mode2 | cvtr_mode4 )?	11'd831 : 11'd1663 ;
+assign out_addr_num = (cvtr_mode2 | cvtr_mode4 )?	11'd831 : 
+							( cvtr_mode7 )?			11'd2047 :
+														11'd1663 ;
 //--------------------------------
 //always block : row1 data output
 //--------------------------------
