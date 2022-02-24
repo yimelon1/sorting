@@ -19,6 +19,9 @@
 //		1. choose cfg_mode for 3 (normal size layer) and 4 (layer3x)
 //	2022/02/09: new mode 4 ,5 ,6 sim ok
 //	2022/02/17: new mode 7 filter mode 
+//	2022/02/22: new mode 8 : for 1x1 to 3x3
+//		1.	input size changed to 832 and 416( for 13*256)
+//		2.	counter hierarchy need to change.
 //----------------------------------------------------------------------
 //	cfg_mode = 1 transform 3x3 ofmap into channel-major order map	for 1x1 convolution
 //	cfg_mode = 2 made the 31 to 32 transform success on simulation 
@@ -28,6 +31,7 @@
 //	cfg_mode = 5	for size26 row-major order		---2022/02/08: new mode 5 and 6
 //	cfg_mode = 6	for size52 row-major order		---2022/02/08: new mode 5 and 6
 //	cfg_mode = 7	gather mem non filter	---2022/02/17: new mode 7  for Conv1x1_transform_complete
+//	cfg_mode = 8	1x1 transform 3x3 	---2022/02/22:	input 832 ,without sim
 // ============================================================================
 
 
@@ -157,6 +161,7 @@ wire cvtr_mode4 ;
 wire cvtr_mode5 ;
 wire cvtr_mode6 ;
 wire cvtr_mode7 ;
+wire cvtr_mode8 ;
 
 
 //---- control_signal ----
@@ -298,7 +303,6 @@ assign debug_wea_sto2 			= wea_sto2 			;
 assign debug_addr_sram_sto2 	= addr_sram_sto2 	;
 assign debug_din_sram_sto2 		= din_sram_sto2 	;
 assign debug_dout_sram_sto2 	= dout_sram_sto2 	;
-
 
 assign debug_ch_selector		= ch_selector			;
 assign debug_ch_part 			= ch_part 				;
@@ -451,8 +455,9 @@ BRAM_ST ST2(
   .douta(   dout_sram_sto2   )  // output wire [ 63: 0] douta
 );
 //============================================= END OF BLOCK RAM declare ===============
-//---- mux of BRAM_ST signal ----
 
+
+//---- mux of BRAM_ST signal ----
 assign en_sto1 = ( en_store_data & ~st_cho_sram )	? 	en_cnt_store_addr :
 								( en_sort_data )	? 	1'd1 :
 														1'd0 ;
@@ -487,17 +492,6 @@ assign en_soz1 = ( en_sort_data )	? 	dly1_en_sort_data :
 
 assign din_sram_soz1 = ( en_sort_data )? re_size_reg : 64'heeee_eeee_eeee_eeee ;
 //----------------------------------
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -620,6 +614,7 @@ assign cvtr_mode4	=	(cfg_mode == 32'd4 )?	1'b1 : 1'b0 ;
 assign cvtr_mode5	=	(cfg_mode == 32'd5 )?	1'b1 : 1'b0 ;
 assign cvtr_mode6	=	(cfg_mode == 32'd6 )?	1'b1 : 1'b0 ;
 assign cvtr_mode7	=	(cfg_mode == 32'd7 )?	1'b1 : 1'b0 ;
+assign cvtr_mode8	=	(cfg_mode == 32'd8 )?	1'b1 : 1'b0 ;
 
 //--------- config ending -------
 assign cfg_end = en_cfg && (	cfg_cnt==3'd2 );
@@ -655,7 +650,7 @@ count_yi_v2 #(
 */
 count_yi_v2 #(
     .BITS_OF_END_NUMBER( 10  ) ,
-    .END_NUMBER ( 1024 )
+    .END_NUMBER ( 2 )
 )cnt_st_times(
     .clk ( clk ),
     .reset ( cnt_rst ), 
@@ -675,8 +670,11 @@ count_yi_v2 #(
 //			need change store data size 
 //-----------------------------------------------------------------------------------------
 assign store_addr_last =	( cvtr_mode2 | cvtr_mode4 )?   store_addr == 'd511 : 
+								(cvtr_mode8 )?   			store_addr == 'd415 : 
 															store_addr == 'd1023 ;
-assign st_addr_end_num = ( cvtr_mode2 | cvtr_mode4 )? 'd512 : 'd1024 ;
+assign st_addr_end_num = ( cvtr_mode2 | cvtr_mode4 )? 	'd512 :
+							(cvtr_mode8 )?				'd416 :  
+														'd1024 ;
 
 always@( *) begin
 	if( en_store_data )begin
@@ -832,11 +830,12 @@ count_yi_v3 #(
     .clk ( clk ),
     .reset ( cnt_rst ), 
     .enable ( en_col_part ), 	//temp
-	.final_number(	'd32	),			//temp
+	.final_number(	fnum_col_part	),			//temp
     .cnt_q ( col_part )			// col part
 );
 
-
+wire [9:0]fnum_col_part;
+assign fnum_col_part = (cvtr_mode8 ) ? 10'd208 : 10'd32;
 
 count_yi_v3 #(
     .BITS_OF_END_NUMBER( 10  ) 
@@ -861,6 +860,8 @@ count_yi_v3 #(
 
 
 //---- sram soz addr counter ----
+wire [ 10:0 ]	fnum_cnt_soz1_addr;	// final number of cnt_soz1_addr
+assign fnum_cnt_soz1_addr = (cvtr_mode8 ) ? 11'd1024: 11'd2048 ; 
 count_yi_v3 #(
     .BITS_OF_END_NUMBER( 11  ) 
 )cnt_13(
@@ -877,13 +878,20 @@ assign fnum_soz_state_cnt = (cvtr_mode4 ) ? 	6'd27:
 								(cvtr_mode5 ) ? 	6'd25: 
 									(cvtr_mode6 ) ? 	6'd20: 
 										(cvtr_mode7 ) ? 	6'd64: 
-								6'd0	;
+											(cvtr_mode8 ) ? 	6'd32: 
+								6'd1	;
+
+wire en_soz_state_cnt ;
+assign en_soz_state_cnt = (cvtr_mode8 & ( col_in_trans == 'd7 ) & en_sort_data ) ? 	'd1  : 
+								( (cfg_mode[3-:4] != 4'd8 ) & en_sort_data)?			en_sort_data :
+							 										1'd0 ;
+
 count_yi_v3 #(
     .BITS_OF_END_NUMBER( 6  ) 
 )cnt_20(
     .clk ( clk ),
     .reset ( cnt_rst ), 
-    .enable ( en_sort_data ), 
+    .enable ( en_soz_state_cnt ), 
 	.final_number(	fnum_soz_state_cnt	),
     .cnt_q ( soz_state_cnt )			// temp ending
 );
@@ -894,9 +902,10 @@ count_yi_v3 #(
 assign multi_ch_selec 	= ch_selector * cfg_rowbase_ch_step ;		// use config
 assign multi_ch_part 	= ch_part * cfg_rowbase_chpart_step ;		// use config
 assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 )?			multi_ch_selec + multi_ch_part + col_part : 
-							(cvtr_mode3 | cvtr_mode7 )?					multi_ch_part 	+ col_in_trans :
-							(cvtr_mode4 | cvtr_mode5  )?			multi_ch_part 	+ col_in_trans :
+							( cvtr_mode3 | cvtr_mode7 )?					multi_ch_part 	+ col_in_trans :
+							( cvtr_mode4 | cvtr_mode5 )?			multi_ch_part 	+ col_in_trans :
 							( cvtr_mode6 )?					multi_ch_part 	+ col_in_trans + multi_ch_selec:
+							( cvtr_mode8 )?					multi_ch_selec + multi_ch_part + col_part : 
 															10'd0	;
 //---- SORT counter enable control ----
 always@( * )begin
@@ -1040,6 +1049,18 @@ always@( * )begin
 
 		end
 
+		4'd8	: begin
+
+			en_col_in_trans	=	( en_sort_data )?		1'd1	: 1'd0	;
+			
+
+				en_col_part		= 	( en_sort_data &  (soz_state_cnt <= 6'd25) )?		1'd1	: 1'd0	;
+				en_ch_selector 	= 	( en_sort_data & ( col_part == fnum_col_part - 'd1))?		1'd1	: 1'd0	;
+				en_ch_part		=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ))?		1'd1	: 1'd0	;
+				en_sram_choo	=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 )  )	?	1'd1	: 1'd0;
+			
+		end
+
 		default:  begin 
 			en_ch_selector 	= 1'd0 ;	 
 			en_ch_part 		= 1'd0 ; 	 	
@@ -1058,7 +1079,6 @@ always@(*) begin
 	case( cfg_mode[3-:4] )
 		4'd1: begin
 			en_sort_addr = ( en_sort_data &  ( dly1_ch_selector == 'd7) )	?	1'd1 : 1'd0 ;
-
 		end
 		4'd2 : begin
 			en_sort_addr = ( en_sort_data &  ( dly1_ch_selector == 'd7) )	?	1'd1 : 1'd0 ;
@@ -1177,6 +1197,11 @@ always@(*) begin
 			
 
 		end
+		
+		
+		4'd8 : begin
+			en_sort_addr = ( en_sort_data &  ( dly1_col_in_trans == 'd7) )	?	1'd1 : 1'd0 ;
+		end
 		default: en_sort_addr = 1'd0 ;
 
 	endcase
@@ -1189,6 +1214,19 @@ always@( * )begin
 	case( cfg_mode[3 -: 4] )
 		4'd1,4'd2:begin
 				case( dly1_ch_selector )
+					3'd0: wea_soz1_choo = 	8'b1000_0000		;
+					3'd1: wea_soz1_choo = 	8'b0100_0000		;
+					3'd2: wea_soz1_choo = 	8'b0010_0000		;
+					3'd3: wea_soz1_choo = 	8'b0001_0000		;
+					3'd4: wea_soz1_choo = 	8'b0000_1000		;
+					3'd5: wea_soz1_choo = 	8'b0000_0100		;
+					3'd6: wea_soz1_choo = 	8'b0000_0010		;
+					3'd7: wea_soz1_choo = 	8'b0000_0001		;
+					default : wea_soz1_choo = 8'hff ;
+				endcase
+			end
+		4'd8:begin
+				case( dly1_col_in_trans )
 					3'd0: wea_soz1_choo = 	8'b1000_0000		;
 					3'd1: wea_soz1_choo = 	8'b0100_0000		;
 					3'd2: wea_soz1_choo = 	8'b0010_0000		;
@@ -1285,8 +1323,9 @@ end
 //				data position should be changed by following logic.
 //----------------------------------------------------------------------- 
 assign row1_sort_done = ( cvtr_mode3 | cvtr_mode5 | cvtr_mode6 | cvtr_mode7 )			?	cnt_soz1_addr == 'd2047  :
-							( cvtr_mode4 )									? 	(cnt_soz1_addr == 'd1023 ) :
+							( cvtr_mode4 )								? 	(cnt_soz1_addr == 'd1023 ) :
 								( cvtr_mode2 )								? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) :
+									( cvtr_mode8 )								? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_col_in_trans == 3'd7 )) :
 																		( (cnt_soz1_addr == 'd2047 ) & ( dly1_ch_selector == 3'd7 ))	;
 
 assign sram_sto_choose = (  (dly1_sram_choo == 10'd0) 	)?	 	dout_sram_sto1	:
@@ -1295,16 +1334,34 @@ assign sram_sto_choose = (  (dly1_sram_choo == 10'd0) 	)?	 	dout_sram_sto1	:
 
 
 always@( * )begin
-	case( dly1_col_in_trans )
-		3'd0: col_choo_reg = sram_sto_choose [63 -: 8] 	;
-		3'd1: col_choo_reg = sram_sto_choose [55 -: 8] 	;
-		3'd2: col_choo_reg = sram_sto_choose [47 -: 8] 	;
-		3'd3: col_choo_reg = sram_sto_choose [39 -: 8] 	;
-		3'd4: col_choo_reg = sram_sto_choose [31 -: 8] 	;
-		3'd5: col_choo_reg = sram_sto_choose [23 -: 8] 	;
-		3'd6: col_choo_reg = sram_sto_choose [15 -: 8] 	;
-		3'd7: col_choo_reg = sram_sto_choose [7 -: 8] 	;
-		default : col_choo_reg = 8'd0 ;
+	case( cfg_mode[3 -: 4] )
+	4'd8: begin
+			case( dly1_ch_selector )
+				3'd0: col_choo_reg = sram_sto_choose [63 -: 8] 	;
+				3'd1: col_choo_reg = sram_sto_choose [55 -: 8] 	;
+				3'd2: col_choo_reg = sram_sto_choose [47 -: 8] 	;
+				3'd3: col_choo_reg = sram_sto_choose [39 -: 8] 	;
+				3'd4: col_choo_reg = sram_sto_choose [31 -: 8] 	;
+				3'd5: col_choo_reg = sram_sto_choose [23 -: 8] 	;
+				3'd6: col_choo_reg = sram_sto_choose [15 -: 8] 	;
+				3'd7: col_choo_reg = sram_sto_choose [7 -: 8] 	;
+				default : col_choo_reg = 8'd0 ;
+			endcase
+		end
+	default :begin
+			case( dly1_col_in_trans )
+				3'd0: col_choo_reg = sram_sto_choose [63 -: 8] 	;
+				3'd1: col_choo_reg = sram_sto_choose [55 -: 8] 	;
+				3'd2: col_choo_reg = sram_sto_choose [47 -: 8] 	;
+				3'd3: col_choo_reg = sram_sto_choose [39 -: 8] 	;
+				3'd4: col_choo_reg = sram_sto_choose [31 -: 8] 	;
+				3'd5: col_choo_reg = sram_sto_choose [23 -: 8] 	;
+				3'd6: col_choo_reg = sram_sto_choose [15 -: 8] 	;
+				3'd7: col_choo_reg = sram_sto_choose [7 -: 8] 	;
+				default : col_choo_reg = 8'd0 ;
+			endcase
+		end 
+
 	endcase
 end
 //--- generate 64bits data structure
@@ -1327,6 +1384,26 @@ always@( * )begin
 			end
 		4'd3 ,4'd7 :begin
 			re_size_reg = sram_sto_choose ;
+			end
+		4'd8 :begin
+
+			if( dly1_soz_state_cnt <= 6'd25 )begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+					3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
+					3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
+					3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
+					3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase
+			end
+			else begin
+				re_size_reg = 64'h0;			
+			end
+			
 			end
 		4'd4:begin
 			case( dly1_soz_state_cnt )	
@@ -1492,6 +1569,7 @@ assign dout_osif_last = dly1_cnt_output_last ;		// 10/14 need to wait for BRAM's
 assign dout_osif_write = en_output_write &  en_output_data;
 assign out_addr_num = (cvtr_mode2 | cvtr_mode4 )?	11'd831 : 
 							( cvtr_mode7 )?			11'd2047 :
+							( cvtr_mode8 )?			11'd1023 :
 														11'd1663 ;
 //--------------------------------
 //always block : row1 data output

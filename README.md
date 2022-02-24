@@ -7,3 +7,4 @@ memory data sorting
 2022/02/09	: mode="4~6" simulation ok
 2022/02/10	: mode=4~6 fpga ok demo not yet  
 2022/02/18	: mode=7 sim not yet   
+2022/02/25	: mode=8 sim not yet   
