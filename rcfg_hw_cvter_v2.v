@@ -901,11 +901,10 @@ count_yi_v3 #(
 // ---- SORT_state : sto address generator----
 assign multi_ch_selec 	= ch_selector * cfg_rowbase_ch_step ;		// use config
 assign multi_ch_part 	= ch_part * cfg_rowbase_chpart_step ;		// use config
-assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 )?			multi_ch_selec + multi_ch_part + col_part : 
+assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 |cvtr_mode8  )?			multi_ch_selec + multi_ch_part + col_part : 
 							( cvtr_mode3 | cvtr_mode7 )?					multi_ch_part 	+ col_in_trans :
 							( cvtr_mode4 | cvtr_mode5 )?			multi_ch_part 	+ col_in_trans :
-							( cvtr_mode6 )?					multi_ch_part 	+ col_in_trans + multi_ch_selec:
-							( cvtr_mode8 )?					multi_ch_selec + multi_ch_part + col_part : 
+							( cvtr_mode6 )?					multi_ch_part 	+ col_in_trans + multi_ch_selec: 
 															10'd0	;
 //---- SORT counter enable control ----
 always@( * )begin
