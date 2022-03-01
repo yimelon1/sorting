@@ -8,3 +8,4 @@ memory data sorting
 2022/02/10	: mode=4~6 fpga ok demo not yet  
 2022/02/18	: mode=7 sim ok 
 2022/02/25	: mode=8 sim  size 208 ok 
+2022/03/01	: mode=9~12 sim ok   

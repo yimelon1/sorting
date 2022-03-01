@@ -31,7 +31,11 @@
 //	cfg_mode = 5	for size26 row-major order		---2022/02/08: new mode 5 and 6
 //	cfg_mode = 6	for size52 row-major order		---2022/02/08: new mode 5 and 6
 //	cfg_mode = 7	gather mem non filter	---2022/02/17: new mode 7  for Conv1x1_transform_complete
-//	cfg_mode = 8	1x1 transform 3x3 	---2022/02/22:	input 832 ,without sim
+//	cfg_mode = 8	1x1 transform 3x3 	---2022/02/22:	size 208 input 832 , sim ok
+//	cfg_mode = 9	1x1 transform 3x3 	---2022/03/01:	size 104 input 832 ,without sim
+//	cfg_mode = 10	1x1 transform 3x3 	---2022/03/01:	size 52 input 832 ,without sim
+//	cfg_mode = 11	1x1 transform 3x3 	---2022/03/01:	size 26 input 832 ,without sim
+//	cfg_mode = 12	1x1 transform 3x3 	---2022/03/01:	size 13 input 416 ,without sim
 // ============================================================================
 
 
@@ -550,8 +554,6 @@ end
 
 
 
-
-
 //========================================================================================
 //==================							==========================================
 //==================		config control		==========================================
@@ -615,7 +617,10 @@ assign cvtr_mode5	=	(cfg_mode == 32'd5 )?	1'b1 : 1'b0 ;
 assign cvtr_mode6	=	(cfg_mode == 32'd6 )?	1'b1 : 1'b0 ;
 assign cvtr_mode7	=	(cfg_mode == 32'd7 )?	1'b1 : 1'b0 ;
 assign cvtr_mode8	=	(cfg_mode == 32'd8 )?	1'b1 : 1'b0 ;
-
+assign cvtr_mode9	=	(cfg_mode == 32'd9 )?	1'b1 : 1'b0 ;
+assign cvtr_mode10	=	(cfg_mode == 32'd10 )?	1'b1 : 1'b0 ;
+assign cvtr_mode11	=	(cfg_mode == 32'd11 )?	1'b1 : 1'b0 ;
+assign cvtr_mode12	=	(cfg_mode == 32'd12 )?	1'b1 : 1'b0 ;
 //--------- config ending -------
 assign cfg_end = en_cfg && (	cfg_cnt==3'd2 );
 //------------------------------------------------------------------------------------------------------------------
@@ -669,12 +674,14 @@ count_yi_v2 #(
 //			doing 3x3 to 1x1 for layer3x , because the smaller input feature map
 //			need change store data size 
 //-----------------------------------------------------------------------------------------
-assign store_addr_last =	( cvtr_mode2 | cvtr_mode4 )?   store_addr == 'd511 : 
-								(cvtr_mode8 )?   			store_addr == 'd415 : 
-															store_addr == 'd1023 ;
-assign st_addr_end_num = ( cvtr_mode2 | cvtr_mode4 )? 	'd512 :
-							(cvtr_mode8 )?				'd416 :  
-														'd1024 ;
+assign store_addr_last =	( cvtr_mode2 | cvtr_mode4 )?									store_addr == 'd511 : 
+								(cvtr_mode8 | cvtr_mode9 | cvtr_mode10 | cvtr_mode11 )?		store_addr == 'd415 : 
+									(cvtr_mode12 )?  										store_addr == 'd207 : 
+																							store_addr == 'd1023 ;
+assign st_addr_end_num = ( cvtr_mode2 | cvtr_mode4 )? 									'd512 :
+							(cvtr_mode8 | cvtr_mode9 | cvtr_mode10 | cvtr_mode11 )?		'd416 :  
+								(cvtr_mode12 )?   										'd208 :
+																						'd1024 ;
 
 always@( *) begin
 	if( en_store_data )begin
@@ -835,7 +842,12 @@ count_yi_v3 #(
 );
 
 wire [9:0]fnum_col_part;
-assign fnum_col_part = (cvtr_mode8 ) ? 10'd208 : 10'd32;
+assign fnum_col_part = (cvtr_mode8 ) ? 			10'd208		: 
+							(cvtr_mode9 ) ? 	10'd104		: 
+							(cvtr_mode10) ?		10'd52		:
+							(cvtr_mode11) ?		10'd26		:
+							(cvtr_mode12) ?		10'd13		:
+												10'd32		;
 
 count_yi_v3 #(
     .BITS_OF_END_NUMBER( 10  ) 
@@ -878,13 +890,45 @@ assign fnum_soz_state_cnt = (cvtr_mode4 ) ? 	6'd27:
 								(cvtr_mode5 ) ? 	6'd25: 
 									(cvtr_mode6 ) ? 	6'd20: 
 										(cvtr_mode7 ) ? 	6'd64: 
-											(cvtr_mode8 ) ? 	6'd32: 
-								6'd1	;
+											(cvtr_mode8 ) ? 	6'd32	: 
+											(cvtr_mode9 ) ? 	6'd16	: 
+											(cvtr_mode10 ) ? 	6'd8	: 
+											(cvtr_mode11 ) ? 	6'd4	:
+											(cvtr_mode12 ) ? 	6'd2	:
+																	6'd1	;
 
-wire en_soz_state_cnt ;
-assign en_soz_state_cnt = (cvtr_mode8 & ( col_in_trans == 'd7 ) & en_sort_data ) ? 	'd1  : 
-								( (cfg_mode[3-:4] != 4'd8 ) & en_sort_data)?			en_sort_data :
-							 										1'd0 ;
+reg en_soz_state_cnt ;
+
+always@(*)begin
+	if( en_sort_data )begin
+		case( cfg_mode[3-:4] )
+			4'd8 : begin 
+				if( col_in_trans == 'd7 )begin
+					en_soz_state_cnt = 1'd1 ;
+				end
+				else begin
+					en_soz_state_cnt = 1'd0 ;
+				end
+			end
+			4'd9 , 4'd10 , 4'd11 , 4'd12 : begin 
+				if( col_in_trans == 'd7 )begin
+					en_soz_state_cnt = 1'd1 ;
+				end
+				else begin
+					en_soz_state_cnt = 1'd0 ;
+				end
+			end
+			default : begin
+				en_soz_state_cnt = en_sort_data ;
+			end
+		endcase
+
+	end 
+	else begin
+		en_soz_state_cnt = 1'd0 ;
+	end
+
+end
 
 count_yi_v3 #(
     .BITS_OF_END_NUMBER( 6  ) 
@@ -897,11 +941,10 @@ count_yi_v3 #(
 );
 
 
-
 // ---- SORT_state : sto address generator----
 assign multi_ch_selec 	= ch_selector * cfg_rowbase_ch_step ;		// use config
 assign multi_ch_part 	= ch_part * cfg_rowbase_chpart_step ;		// use config
-assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 |cvtr_mode8  )?			multi_ch_selec + multi_ch_part + col_part : 
+assign sto_addr_temp =  (cvtr_mode1 | cvtr_mode2 |cvtr_mode8 |cvtr_mode9 | cvtr_mode10 | cvtr_mode11 | cvtr_mode12 )?			multi_ch_selec + multi_ch_part + col_part : 
 							( cvtr_mode3 | cvtr_mode7 )?					multi_ch_part 	+ col_in_trans :
 							( cvtr_mode4 | cvtr_mode5 )?			multi_ch_part 	+ col_in_trans :
 							( cvtr_mode6 )?					multi_ch_part 	+ col_in_trans + multi_ch_selec: 
@@ -1051,15 +1094,99 @@ always@( * )begin
 		4'd8	: begin
 
 			en_col_in_trans	=	( en_sort_data )?		1'd1	: 1'd0	;
-			
-
 				en_col_part		= 	( en_sort_data &  (soz_state_cnt <= 6'd25) )?		1'd1	: 1'd0	;
 				en_ch_selector 	= 	( en_sort_data & ( col_part == fnum_col_part - 'd1))?		1'd1	: 1'd0	;
 				en_ch_part		=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ))?		1'd1	: 1'd0	;
 				en_sram_choo	=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 )  )	?	1'd1	: 1'd0;
 			
 		end
+		4'd9	: begin
+			en_col_in_trans	=	( en_sort_data )?		1'd1	: 1'd0	;
+				en_col_part		= 	( en_sort_data &  (soz_state_cnt <= 6'd12) )?		1'd1	: 1'd0	;
+				en_ch_selector 	= 	( en_sort_data & ( col_part == fnum_col_part - 'd1))?		1'd1	: 1'd0	;
+				en_ch_part		=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ))?		1'd1	: 1'd0	;
+				en_sram_choo	=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 )  )	?	1'd1	: 1'd0;
+		end
+		4'd10	: begin
+			en_col_in_trans	=	( en_sort_data )?		1'd1	: 1'd0	;
+				
+				en_ch_selector 	= 	( en_sort_data & ( col_part == fnum_col_part - 'd1))?		1'd1	: 1'd0	;
+				en_ch_part		=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ))?		1'd1	: 1'd0	;
+				en_sram_choo	=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 )  )	?	1'd1	: 1'd0;
 
+				//en_col_part		= 	( en_sort_data &  (soz_state_cnt <= 6'd6) & (col_in_trans <= 10'd3 ))?		1'd1	: 1'd0	;
+				if(en_sort_data )begin
+					if( soz_state_cnt <= 6'd5)begin
+						en_col_part = 1'd1 ;
+					end
+					else if( soz_state_cnt == 6'd6) begin
+						if( col_in_trans <= 10'd3) begin
+							en_col_part = 1'd1 ;
+						end
+						else begin
+							en_col_part = 1'd0 ;
+						end
+					end
+					else begin
+						en_col_part = 1'd0 ;
+					end
+				end 
+				else begin
+					en_col_part = 1'd0 ;
+				end
+		end
+		4'd11	: begin
+				en_col_in_trans	=	( en_sort_data )?		1'd1	: 1'd0	;
+				en_ch_selector 	= 	( en_sort_data & ( col_part == fnum_col_part - 'd1))?		1'd1	: 1'd0	;
+				en_ch_part		=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ))?		1'd1	: 1'd0	;
+				en_sram_choo	=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 )  )	?	1'd1	: 1'd0;
+				
+				if(en_sort_data )begin
+					if( soz_state_cnt <= 6'd2)begin
+						en_col_part = 1'd1 ;
+					end
+					else if( soz_state_cnt == 6'd3) begin
+						if( col_in_trans <= 10'd1) begin
+							en_col_part = 1'd1 ;
+						end
+						else begin
+							en_col_part = 1'd0 ;
+						end
+					end
+					else begin
+						en_col_part = 1'd0 ;
+					end
+				end 
+				else begin
+					en_col_part = 1'd0 ;
+				end
+		end
+		4'd12	: begin
+				en_col_in_trans	=	( en_sort_data )?		1'd1	: 1'd0	;
+				en_ch_selector 	= 	( en_sort_data & ( col_part == fnum_col_part - 'd1))?		1'd1	: 1'd0	;
+				en_ch_part		=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ))?		1'd1	: 1'd0	;
+				en_sram_choo	=	( en_sort_data & ( col_part == fnum_col_part - 'd1) & ( ch_selector == 'd7 ) & (ch_part == cfg_ch_part_num - 'd1 )  )	?	1'd1	: 1'd0;
+				
+				if(en_sort_data )begin
+					if( soz_state_cnt == 6'd0) begin
+						en_col_part = 1'd1 ;
+					end
+					else if( soz_state_cnt == 6'd1) begin
+						if( col_in_trans <= 10'd4) begin
+							en_col_part = 1'd1 ;
+						end
+						else begin
+							en_col_part = 1'd0 ;
+						end
+					end
+					else begin
+						en_col_part = 1'd0 ;
+					end
+				end 
+				else begin
+					en_col_part = 1'd0 ;
+				end
+		end
 		default:  begin 
 			en_ch_selector 	= 1'd0 ;	 
 			en_ch_part 		= 1'd0 ; 	 	
@@ -1194,17 +1321,14 @@ always@(*) begin
 					en_sort_addr = 1'd0 ;
 			end
 			
-
 		end
 		
-		
-		4'd8 : begin
+		4'd8 ,4'd9,4'd10,4'd11,4'd12 : begin
 			en_sort_addr = ( en_sort_data &  ( dly1_col_in_trans == 'd7) )	?	1'd1 : 1'd0 ;
 		end
 		default: en_sort_addr = 1'd0 ;
 
 	endcase
-
 
 end
 
@@ -1224,7 +1348,7 @@ always@( * )begin
 					default : wea_soz1_choo = 8'hff ;
 				endcase
 			end
-		4'd8:begin
+		4'd8,4'd9,4'd10,4'd11,4'd12:begin
 				case( dly1_col_in_trans )
 					3'd0: wea_soz1_choo = 	8'b1000_0000		;
 					3'd1: wea_soz1_choo = 	8'b0100_0000		;
@@ -1321,10 +1445,11 @@ end
 //				and choose which sram data is needed. 
 //				data position should be changed by following logic.
 //----------------------------------------------------------------------- 
-assign row1_sort_done = ( cvtr_mode3 | cvtr_mode5 | cvtr_mode6 | cvtr_mode7 )			?	cnt_soz1_addr == 'd2047  :
-							( cvtr_mode4 )								? 	(cnt_soz1_addr == 'd1023 ) :
-								( cvtr_mode2 )								? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) :
-									( cvtr_mode8 )								? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_col_in_trans == 3'd7 )) :
+assign row1_sort_done = ( cvtr_mode3 | cvtr_mode5 | cvtr_mode6 | cvtr_mode7 )						?	cnt_soz1_addr == 'd2047  :
+							( cvtr_mode4 )															? 	(cnt_soz1_addr == 'd1023 ) :
+								( cvtr_mode2 )														? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_ch_selector == 3'd7 )) :
+									( cvtr_mode8 | cvtr_mode9 | cvtr_mode10 | cvtr_mode11 )			? 	( (cnt_soz1_addr == 'd1023 ) & ( dly1_col_in_trans == 3'd7 )) :
+										( cvtr_mode12 )												?	( (cnt_soz1_addr == 'd511 ) & ( dly1_col_in_trans == 3'd7 )) :
 																		( (cnt_soz1_addr == 'd2047 ) & ( dly1_ch_selector == 3'd7 ))	;
 
 assign sram_sto_choose = (  (dly1_sram_choo == 10'd0) 	)?	 	dout_sram_sto1	:
@@ -1334,7 +1459,7 @@ assign sram_sto_choose = (  (dly1_sram_choo == 10'd0) 	)?	 	dout_sram_sto1	:
 
 always@( * )begin
 	case( cfg_mode[3 -: 4] )
-	4'd8: begin
+	4'd8 , 4'd9 , 4'd10 , 4'd11 , 4'd12 : begin
 			case( dly1_ch_selector )
 				3'd0: col_choo_reg = sram_sto_choose [63 -: 8] 	;
 				3'd1: col_choo_reg = sram_sto_choose [55 -: 8] 	;
@@ -1380,30 +1505,12 @@ always@( * )begin
 				3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
 				default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
 			endcase
-			end
+		end
+
 		4'd3 ,4'd7 :begin
 			re_size_reg = sram_sto_choose ;
 			end
-		4'd8 :begin
 
-			if( dly1_soz_state_cnt <= 6'd25 )begin
-				case( dly1_col_in_trans )
-					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
-					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
-					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
-					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
-					3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
-					3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
-					3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
-					3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
-					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
-				endcase
-			end
-			else begin
-				re_size_reg = 64'h0;			
-			end
-			
-			end
 		4'd4:begin
 			case( dly1_soz_state_cnt )	
 				6'd0	: re_size_reg =		sram_sto_choose		;
@@ -1437,6 +1544,7 @@ always@( * )begin
 				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
 			endcase
 		end	
+
 		4'd5:begin
 			case( dly1_soz_state_cnt )	
 				6'd0	: re_size_reg =		sram_sto_choose		;
@@ -1468,6 +1576,7 @@ always@( * )begin
 				default : re_size_reg =	 64'hffff_ffff_ffff_ffff ;		// include 0,1,2
 			endcase
 		end	
+
 		4'd6:begin
 			case( dly1_soz_state_cnt )	
 				6'd0	: re_size_reg =		sram_sto_choose		;
@@ -1495,6 +1604,135 @@ always@( * )begin
 			endcase
 		end
 
+		4'd8 :begin
+			if( dly1_soz_state_cnt <= 6'd25 )begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+					3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
+					3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
+					3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
+					3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase
+			end
+			else begin
+				re_size_reg = 64'h0;			
+			end
+		end
+		4'd9 :begin
+			if( dly1_soz_state_cnt <= 6'd12 )begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+					3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
+					3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
+					3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
+					3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase
+			end
+			else begin
+				re_size_reg = 64'h0;	
+			end
+		end
+		4'd10 :begin
+			if( dly1_soz_state_cnt <= 6'd5 )begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+					3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
+					3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
+					3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
+					3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase
+			end
+			else if( dly1_soz_state_cnt == 6'd6)begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+					3'd4: re_size_reg = 64'h0 ;
+					3'd5: re_size_reg = 64'h0 ;
+					3'd6: re_size_reg = 64'h0 ;
+					3'd7: re_size_reg = 64'h0 ;
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase			
+			end
+			else begin
+				re_size_reg = 64'h0 ;
+			end
+		end
+		4'd11 :begin
+			if( dly1_soz_state_cnt <= 6'd2 )begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+					3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
+					3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
+					3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
+					3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase
+			end
+			else if( dly1_soz_state_cnt == 6'd3)begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = 64'h0 ;
+					3'd3: re_size_reg = 64'h0 ;
+					3'd4: re_size_reg = 64'h0 ;
+					3'd5: re_size_reg = 64'h0 ;
+					3'd6: re_size_reg = 64'h0 ;
+					3'd7: re_size_reg = 64'h0 ;
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase			
+			end
+			else begin
+				re_size_reg = 64'h0 ;
+			end
+		end
+		4'd12 :begin
+			if( dly1_soz_state_cnt == 6'd0 )begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+					3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
+					3'd5: re_size_reg = { 40'd0 , 	col_choo_reg	 ,		16'd0	};
+					3'd6: re_size_reg = { 48'd0 , 	col_choo_reg	 ,		8'd0	};
+					3'd7: re_size_reg = { 56'd0 , 	col_choo_reg					};
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase
+			end
+			else if( dly1_soz_state_cnt == 6'd1)begin
+				case( dly1_col_in_trans )
+					3'd0: re_size_reg = { 			col_choo_reg	 , 		56'd0 	};
+					3'd1: re_size_reg = { 8'd0 , 	col_choo_reg	 ,		48'd0	};
+					3'd2: re_size_reg = { 16'd0 , 	col_choo_reg	 ,		40'd0	};
+					3'd3: re_size_reg = { 24'd0 , 	col_choo_reg	 ,		32'd0	};
+					3'd4: re_size_reg = { 32'd0 , 	col_choo_reg	 ,		24'd0	};
+					3'd5: re_size_reg = 64'd0;
+					3'd6: re_size_reg = 64'd0;
+					3'd7: re_size_reg = 64'd0;
+					default : re_size_reg = 64'hffff_ffff_ffff_ffff ;
+				endcase			
+			end
+			else begin
+				re_size_reg = 64'h0 ;
+			end
+		end
 		default : begin
 			re_size_reg = 64'hffff_ffff_ffff_ffff ;
 		end
@@ -1568,7 +1806,8 @@ assign dout_osif_last = dly1_cnt_output_last ;		// 10/14 need to wait for BRAM's
 assign dout_osif_write = en_output_write &  en_output_data;
 assign out_addr_num = (cvtr_mode2 | cvtr_mode4 )?	11'd831 : 
 							( cvtr_mode7 )?			11'd2047 :
-							( cvtr_mode8 )?			11'd1023 :
+							( cvtr_mode8 | cvtr_mode9 | cvtr_mode10 | cvtr_mode11 )?			11'd1023 :
+							( cvtr_mode12 )?			11'd511 :
 														11'd1663 ;
 //--------------------------------
 //always block : row1 data output
